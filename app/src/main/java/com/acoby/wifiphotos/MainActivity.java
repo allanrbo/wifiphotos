@@ -1,184 +1,266 @@
 package com.acoby.wifiphotos;
 
+import android.Manifest;
+import android.content.ContentUris;
+import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.util.Log;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 
-import org.apache.http.ConnectionClosedException;
-import org.apache.http.ExceptionLogger;
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpException;
-import org.apache.http.HttpRequest;
-import org.apache.http.HttpResponse;
-import org.apache.http.config.SocketConfig;
-import org.apache.http.entity.ContentProducer;
-import org.apache.http.entity.EntityTemplate;
-import org.apache.http.impl.DefaultConnectionReuseStrategy;
-import org.apache.http.impl.DefaultHttpResponseFactory;
-import org.apache.http.impl.DefaultHttpServerConnection;
-import org.apache.http.impl.bootstrap.HttpServer;
-import org.apache.http.impl.bootstrap.ServerBootstrap;
-import org.apache.http.params.BasicHttpParams;
-import org.apache.http.protocol.BasicHttpContext;
-import org.apache.http.protocol.BasicHttpProcessor;
-import org.apache.http.protocol.HttpContext;
-import org.apache.http.protocol.HttpRequestHandler;
-import org.apache.http.protocol.HttpRequestHandlerRegistry;
-import org.apache.http.protocol.HttpService;
-import org.apache.http.protocol.ResponseConnControl;
-import org.apache.http.protocol.ResponseContent;
-import org.apache.http.protocol.ResponseDate;
-import org.apache.http.protocol.ResponseServer;
-
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.SocketTimeoutException;
+import java.util.Map;
+
+import fi.iki.elonen.NanoHTTPD;
 
 public class MainActivity extends AppCompatActivity {
-    HttpServiceThread httpServiceThread;
-    HttpServer server;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-//                        .setServerInfo("Test/1.1")
-
-
-        server = ServerBootstrap.bootstrap()
-                .setListenerPort(8080)
-                .setSocketConfig(SocketConfig.DEFAULT)
-                .setExceptionLogger(new StdErrorExceptionLogger())
-                .registerHandler("*", new HomeCommandHandler())
-                .create();
+        isReadStoragePermissionGranted();
+        isWriteStoragePermissionGranted();
 
         try {
-            server.start();
-        }catch (Exception e) {
+            HttpServer s = new HttpServer();
+            s.start();
+        } catch(Exception e) {
             e.printStackTrace();
         }
-
-        //httpServiceThread = new HttpServiceThread();
-        //httpServiceThread.start();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        //httpServiceThread.stopServer();
-        server.stop();
+
     }
 
-    static class StdErrorExceptionLogger implements ExceptionLogger {
-        @Override
-        public void log(final Exception ex) {
-            if (ex instanceof SocketTimeoutException) {
-                System.err.println("Connection timed out");
-            } else if (ex instanceof ConnectionClosedException) {
-                System.err.println(ex.getMessage());
+    static String TAG = "sometag1";
+
+    public  boolean isReadStoragePermissionGranted() {
+        if (Build.VERSION.SDK_INT >= 23) {
+            if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
+                    == PackageManager.PERMISSION_GRANTED) {
+                Log.v(TAG,"Permission is granted1");
+                return true;
             } else {
-                ex.printStackTrace();
+
+                Log.v(TAG,"Permission is revoked1");
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 3);
+                return false;
             }
+        }
+        else { //permission is automatically granted on sdk<23 upon installation
+            Log.v(TAG,"Permission is granted1");
+            return true;
         }
     }
 
-    private class HttpServiceThread extends Thread {
+    public  boolean isWriteStoragePermissionGranted() {
+        if (Build.VERSION.SDK_INT >= 23) {
+            if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    == PackageManager.PERMISSION_GRANTED) {
+                Log.v(TAG,"Permission is granted2");
+                return true;
+            } else {
 
-        ServerSocket serverSocket;
-        Socket socket;
-        HttpService httpService;
-        BasicHttpContext basicHttpContext;
-        static final int HttpServerPORT = 8080;
-        boolean RUNNING = false;
+                Log.v(TAG,"Permission is revoked2");
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 2);
+                return false;
+            }
+        }
+        else { //permission is automatically granted on sdk<23 upon installation
+            Log.v(TAG,"Permission is granted2");
+            return true;
+        }
+    }
 
-        HttpServiceThread() {
-            RUNNING = true;
-            startHttpService();
+    public class HttpServer extends NanoHTTPD {
+        public HttpServer() throws IOException {
+            super(8080);
         }
 
         @Override
-        public void run() {
-
+        public Response serve(IHTTPSession session) {
             try {
-                serverSocket = new ServerSocket(HttpServerPORT);
-                serverSocket.setReuseAddress(true);
 
-                while (RUNNING) {
-                    socket = serverSocket.accept();
-                    DefaultHttpServerConnection httpServerConnection = new DefaultHttpServerConnection();
-                    httpServerConnection.bind(socket, new BasicHttpParams());
-                    httpService.handleRequest(httpServerConnection, basicHttpContext);
-                    httpServerConnection.shutdown();
+                Map<String, String> parms = session.getParms();
+
+
+
+                String imgid = parms.get("imgid");
+                if (imgid != null && !imgid.equals("")) {
+                    long id = Long.parseLong(imgid);
+                    Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
+
+                    //Bitmap thumbnail = getApplicationContext().getContentResolver().loadThumbnail(contentUri, new Size(1000, 1000), null);
+                    //ByteArrayOutputStream o = new ByteArrayOutputStream();
+                    //thumbnail.compress(Bitmap.CompressFormat.JPEG, 80, o);
+                    //return Response.newFixedLengthResponse(Status.OK, "image/jpeg", o.toByteArray());
+
+
+
+
+                    Bitmap bm = BitmapFactory.decodeStream(getApplicationContext().getContentResolver().openInputStream(contentUri));
+                    int w = bm.getWidth();
+                    int h = bm.getHeight();
+                    Bitmap sbm = Bitmap.createScaledBitmap(bm, (w*500)/h, 500, true);
+                    ByteArrayOutputStream o = new ByteArrayOutputStream();
+                    sbm.compress(Bitmap.CompressFormat.JPEG, 80, o);
+                    byte[] bb = o.toByteArray();
+                    ByteArrayInputStream inStream = new ByteArrayInputStream(bb);
+                    return newFixedLengthResponse(Response.Status.OK, "image/jpeg", inStream, bb.length);
+
+
+                    // TODO possibly better resizing: https://stackoverflow.com/questions/4916159/android-get-thumbnail-of-image-on-sd-card-given-uri-of-original-image
+
+
+//
+//
+//                    Bitmap smaller_bm = BitmapFactory.decodeFile(src_path, options);
+//
+//
+//
+//                    ParcelFileDescriptor pfd = getApplicationContext().getContentResolver().openFileDescriptor(contentUri, "r");
+//                    long size = pfd.getStatSize();
+//                    pfd.close();
+//
+//                    InputStream s = getApplicationContext().getContentResolver().openInputStream(contentUri);
+//                    return Response.newFixedLengthResponse(Status.OK, "image/jpeg", s, size);
                 }
-                serverSocket.close();
-            } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            } catch (HttpException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
+
+
+                String deleteimgid = parms.get("deleteimgid");
+                if (deleteimgid != null && !deleteimgid.equals("")) {
+                    long id = Long.parseLong(deleteimgid);
+                    Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
+
+                    getApplicationContext().getContentResolver().delete(contentUri, null, null);
+                    //final ContentValues values = new ContentValues();
+                    //values.put("date_expires", (System.currentTimeMillis() + 48 * DateUtils.HOUR_IN_MILLIS) / 1000);
+                    //values.put("is_trashed", 1);
+                    //getApplicationContext().getContentResolver().update(contentUri, values, null, null);
+
+                    Response r = newFixedLengthResponse(Response.Status.TEMPORARY_REDIRECT, "text/html", "");
+                    r.addHeader("Location", "/");
+                    return r;
+                }
+
+                String msg = "<html><body>v1<br/>";
+
+                msg +=  Environment.getExternalStorageDirectory().getPath() + "<br/>";
+
+
+                /*
+                String path = parms.get("p");
+                if (path == null || path.equals("")) {
+                    path = Environment.getExternalStorageDirectory().getPath();
+                }
+
+                File file = new File(path);
+                msg += "<b>" + file.toString() + "</b>\n\n";
+
+                File[] ff = file.listFiles();
+                if (ff != null) {
+                    for (File f : ff) {
+                        msg += "<a href=\"?p=" + f.getPath() + "\">" + f.getName() + "</a>\n";
+                    }
+                }
+                */
+
+
+
+                ////////////////////////////////////////////////////////////////////
+
+
+                String[] projection = new String[]{
+                        MediaStore.Images.Media._ID,
+                        MediaStore.Images.Media.BUCKET_ID,
+                        MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+                        MediaStore.Images.Media.DATA,
+                        //MediaStore.Images.ImageColumns.VOLUME_NAME,
+                        //MediaStore.Images.ImageColumns.DOCUMENT_ID,
+                        //MediaStore.Images.ImageColumns.OWNER_PACKAGE_NAME,
+                        //MediaStore.Images.ImageColumns.INSTANCE_ID,
+                        //MediaStore.Images.ImageColumns.RELATIVE_PATH,
+                };
+
+                String CAMERA_IMAGE_BUCKET_NAME = Environment.getExternalStorageDirectory().toString()+ "/DCIM/Camera";
+
+                String CAMERA_IMAGE_BUCKET_ID = String.valueOf(CAMERA_IMAGE_BUCKET_NAME.toLowerCase().hashCode());
+
+//                String selection = MediaStore.Images.Media.BUCKET_ID + " = ?";
+//                String[] selectionArgs = { CAMERA_IMAGE_BUCKET_ID };
+                String selection = "";
+                String[] selectionArgs = { };
+
+                String sortOrder = MediaStore.Images.Media.DATE_TAKEN + " DESC";
+                //String sortOrder = MediaStore.Images.Media._ID + " ASC";
+
+
+                Cursor cur = getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        projection, // Which columns to return
+                        selection,       // Which rows to return (all rows)
+                        selectionArgs,       // Selection arguments (none)
+                        sortOrder        // Ordering
+                );
+
+                int idIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
+
+                int i = 0;
+                while(cur.moveToNext()) {
+                    long id = cur.getLong(idIdx);
+                    Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
+
+
+
+                    /*
+                    Bitmap thumbnail = getApplicationContext().getContentResolver().loadThumbnail(contentUri, new Size(800, 600), null);
+
+                    ByteArrayOutputStream o = new ByteArrayOutputStream();
+                    thumbnail.compress(Bitmap.CompressFormat.JPEG, 80, o);
+
+                     */
+
+                    msg +=  "ID: id " + id
+                            + ", contentUri: " + contentUri
+                            + ", bucketId: "+ cur.getString(cur.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID))
+                            + ", bucketName:" + cur.getString(cur.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME))
+                            + ", DATA:" + cur.getString(cur.getColumnIndexOrThrow(MediaStore.Images.Media.DATA))
+                            //+ ", DOCUMENT_ID:" + cur.getString(cur.getColumnIndexOrThrow(MediaStore.Images.ImageColumns.DOCUMENT_ID))
+                            //+ ", OWNER_PACKAGE_NAME:" + cur.getString(cur.getColumnIndexOrThrow(MediaStore.Images.ImageColumns.OWNER_PACKAGE_NAME))
+                            //+ ", INSTANCE_ID:" + cur.getString(cur.getColumnIndexOrThrow(MediaStore.Images.ImageColumns.INSTANCE_ID))
+                            //+ ", RELATIVE_PATH:" + cur.getString(cur.getColumnIndexOrThrow(MediaStore.Images.ImageColumns.RELATIVE_PATH))
+                            + "<br/>\n";
+                    msg += "<img src=\"/?imgid=" + id + "\"/>\n";
+                    msg += "<a style=\" position:absolute; margin-left: -2em;\" href=\"/?deleteimgid=" + id + "\">Del</a> \n";
+                    msg += "<br/>\n";
+                    i++;
+                    if (i > 100) {
+                        break;
+                    }
+                }
+
+
+                return newFixedLengthResponse( msg + "</body></html>\n" );
+
+            } catch(Exception e) {
+                return newFixedLengthResponse(e.toString());
             }
         }
 
-        private synchronized void startHttpService() {
-            BasicHttpProcessor basicHttpProcessor = new BasicHttpProcessor();
-            basicHttpContext = new BasicHttpContext();
-
-            basicHttpProcessor.addInterceptor(new ResponseDate());
-            basicHttpProcessor.addInterceptor(new ResponseServer());
-            basicHttpProcessor.addInterceptor(new ResponseContent());
-            basicHttpProcessor.addInterceptor(new ResponseConnControl());
-
-            httpService = new HttpService(basicHttpProcessor,
-                    new DefaultConnectionReuseStrategy(),
-                    new DefaultHttpResponseFactory());
-
-            HttpRequestHandlerRegistry registry = new HttpRequestHandlerRegistry();
-            registry.register("/", new HomeCommandHandler());
-            httpService.setHandlerResolver(registry);
-        }
-
-        public synchronized void stopServer() {
-            RUNNING = false;
-            if (serverSocket != null) {
-                try {
-                    serverSocket.close();
-                } catch (IOException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
-                }
-            }
-        }
-
-    }
-
-    class HomeCommandHandler implements HttpRequestHandler {
-
-        @Override
-        public void handle(HttpRequest request, HttpResponse response,
-                           HttpContext httpContext) throws HttpException, IOException {
-
-            HttpEntity httpEntity = new EntityTemplate(
-                    new ContentProducer() {
-
-                        public void writeTo(final OutputStream outstream)
-                                throws IOException {
-
-                            OutputStreamWriter outputStreamWriter = new OutputStreamWriter(
-                                    outstream, "UTF-8");
-                            String response = "<html><head></head><body><h1>Hello HttpService, from Android-er<h1></body></html>";
-
-                            outputStreamWriter.write(response);
-                            outputStreamWriter.flush();
-                        }
-                    });
-            response.setHeader("Content-Type", "text/html");
-            response.setEntity(httpEntity);
-        }
     }
 
 }
