@@ -6,14 +6,26 @@ import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.renderscript.Allocation;
+import android.renderscript.RenderScript;
+import android.renderscript.ScriptIntrinsicBlur;
+import android.renderscript.ScriptIntrinsicResize;
+import android.renderscript.Type;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.request.target.CustomTarget;
+import com.bumptech.glide.request.transition.Transition;
 import com.google.gson.Gson;
+import com.squareup.picasso.Picasso;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -139,17 +151,21 @@ public class HttpServer extends NanoHTTPD {
                 }
                 Log.v(MainActivity.LOGTAG, "Cache file: " + cacheFile.toString());
 
-                if (!cacheFile.exists()) {
+                //if (!cacheFile.exists()) {
+                if (1==1) {
                     // TODO avoid this locking.
                     // The lock is here as a workaround for out-of-memory when testing on a OnePlus X with many images loading concurrently:
                     //   java.lang.OutOfMemoryError: Failed to allocate a 51916812 byte allocation with 16769248 free bytes and 28MB until OOM
                     synchronized (this) {
-                        int technique = 2;
+                        int technique = 5;
                         if (parameters.containsKey("technique")) {
                             technique = Integer.parseInt(parameters.get("technique").get(0));
                         }
                         if (technique == 1) resize1(contentUri, cacheFile, size);
                         if (technique == 2) resize2(contentUri, cacheFile, size);
+                        if (technique == 3) resize3(contentUri, cacheFile, size);
+                        if (technique == 4) resize4(contentUri, (int)imageId, cacheFile, size);
+                        if (technique == 5) resize5(contentUri, cacheFile, size);
                     }
                 }
 
@@ -232,6 +248,9 @@ public class HttpServer extends NanoHTTPD {
     }
 
     private void resize1(Uri contentUri, File cacheFile, int size) throws IOException {
+        Log.v(MainActivity.LOGTAG, "resize1");
+        long before = System.currentTimeMillis();
+
         Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling openInputStream");
         InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
         Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling BitmapFactory.decodeStream");
@@ -253,15 +272,19 @@ public class HttpServer extends NanoHTTPD {
         }
         FileOutputStream f = new FileOutputStream(cacheFile);
         Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling Bitmap.CompressFormat");
-        sbm.compress(Bitmap.CompressFormat.JPEG, 70, f);
+        sbm.compress(Bitmap.CompressFormat.JPEG, 100, f);
         f.close();
         if (!sbm.isRecycled()) {
             sbm.recycle();
         }
 
+        Log.v(MainActivity.LOGTAG, "Time taken: " + (System.currentTimeMillis() - before));
     }
 
     private void resize2(Uri contentUri, File cacheFile, int size) throws IOException {
+        Log.v(MainActivity.LOGTAG, "resize2");
+        long before = System.currentTimeMillis();
+
         // Based on https://stackoverflow.com/a/4250279/40645
         // Get the source image's dimensions
         BitmapFactory.Options options = new BitmapFactory.Options();
@@ -312,12 +335,157 @@ public class HttpServer extends NanoHTTPD {
         // Save
         FileOutputStream out = new FileOutputStream(cacheFile);
         Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling Bitmap.CompressFormat");
-        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 70, out);
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out);
         out.close();
         if (!scaledBitmap.isRecycled()) {
             scaledBitmap.recycle();
         }
         scaledBitmap = null;
+
+        Log.v(MainActivity.LOGTAG, "Time taken: " + (System.currentTimeMillis() - before));
+    }
+
+    private void resize3(Uri contentUri, File cacheFile, int size) throws IOException {
+        Log.v(MainActivity.LOGTAG, "resize3");
+        long before = System.currentTimeMillis();
+
+        Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling openInputStream");
+        InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
+        Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling BitmapFactory.decodeStream");
+        Bitmap bm = BitmapFactory.decodeStream(in);
+        in.close();
+        int origWidth = bm.getWidth();
+        int origHeight = bm.getHeight();
+        int newWidth = (origWidth * size) / origHeight;
+        int newHeight = size;
+        if (origWidth > origHeight) {
+            newWidth = size;
+            newHeight = (origHeight * size) / origWidth;
+        }
+
+        FileOutputStream out = new FileOutputStream(cacheFile);
+        Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling Bitmap.CompressFormat");
+        try {
+            Glide.with(this.activity).asBitmap().load(contentUri).submit(newWidth, newHeight).get().compress(Bitmap.CompressFormat.JPEG, 100, out);
+        } catch (Exception e) {
+            Log.v(MainActivity.LOGTAG, Log.getStackTraceString(e));
+        }
+
+        Log.v(MainActivity.LOGTAG, "Time taken: " + (System.currentTimeMillis() - before));
+    }
+
+    private void resize4(Uri contentUri, long imageID, File cacheFile, int size) throws IOException {
+        InputStream in2 = this.activity.getContentResolver().openInputStream(contentUri);
+        File cacheDir = this.activity.getExternalCacheDir();
+        File tmp = new File(cacheDir + "/tmp.jpg");
+        FileOutputStream out2 = new FileOutputStream(tmp);
+        byte[] buf = new byte[1024];
+        int len;
+        while((len=in2.read(buf))>0){
+            out2.write(buf,0,len);
+        }
+        out2.close();
+        in2.close();
+
+
+        Log.v(MainActivity.LOGTAG, "resize4");
+        long before = System.currentTimeMillis();
+
+        Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling openInputStream");
+        InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
+        Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling BitmapFactory.decodeStream");
+        Bitmap bm = BitmapFactory.decodeStream(in);
+        in.close();
+        int origWidth = bm.getWidth();
+        int origHeight = bm.getHeight();
+        int newWidth = (origWidth * size) / origHeight;
+        int newHeight = size;
+        if (origWidth > origHeight) {
+            newWidth = size;
+            newHeight = (origHeight * size) / origWidth;
+        }
+
+        FileOutputStream out = new FileOutputStream(cacheFile);
+        Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling Bitmap.CompressFormat");
+        try {
+            Picasso.get().load(tmp).resize(newWidth,newHeight).onlyScaleDown().get().compress(Bitmap.CompressFormat.JPEG, 100, out);
+        } catch (Exception e) {
+            Log.v(MainActivity.LOGTAG, Log.getStackTraceString(e));
+        }
+
+        Log.v(MainActivity.LOGTAG, "Time taken: " + (System.currentTimeMillis() - before));
+    }
+
+    private void resize5(Uri contentUri, File cacheFile, int size) throws IOException {
+        Log.v(MainActivity.LOGTAG, "resize5");
+        long before = System.currentTimeMillis();
+
+        RenderScript rs = RenderScript.create(this.activity);
+
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inJustDecodeBounds = true;
+        Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling openInputStream");
+        InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
+        BitmapFactory.decodeStream(in, null, options);
+        in.close();
+
+
+        int srcWidth = options.outWidth;
+        int srcHeight = options.outHeight;
+
+        int dstWidth = (srcWidth * size) / srcHeight;
+        int dstHeight = size;
+        if (srcWidth > srcHeight) {
+            dstWidth = size;
+            dstHeight = (srcHeight * size) / srcWidth;
+        }
+
+        float resizeRatio = (float) srcWidth / dstWidth;
+
+        /* Calculate gaussian's radius */
+        float sigma = resizeRatio / (float) Math.PI;
+        // https://android.googlesource.com/platform/frameworks/rs/+/master/cpu_ref/rsCpuIntrinsicBlur.cpp
+        float radius = 2.5f * sigma - 1.5f;
+        radius = Math.min(25, Math.max(0.0001f, radius));
+
+
+        in = this.activity.getContentResolver().openInputStream(contentUri);
+        Bitmap src = BitmapFactory.decodeStream(in);
+        in.close();
+
+        Bitmap.Config  bitmapConfig = src.getConfig();
+
+
+        /* Gaussian filter */
+        Allocation tmpIn = Allocation.createFromBitmap(rs, src);
+        Allocation tmpFiltered = Allocation.createTyped(rs, tmpIn.getType());
+        ScriptIntrinsicBlur blurInstrinsic = ScriptIntrinsicBlur.create(rs, tmpIn.getElement());
+
+        blurInstrinsic.setRadius(radius);
+        blurInstrinsic.setInput(tmpIn);
+        blurInstrinsic.forEach(tmpFiltered);
+
+        tmpIn.destroy();
+        blurInstrinsic.destroy();
+
+        /* Resize */
+        Bitmap dst = Bitmap.createBitmap(dstWidth, dstHeight, bitmapConfig);
+        Type t = Type.createXY(rs, tmpFiltered.getElement(), dstWidth, dstHeight);
+        Allocation tmpOut = Allocation.createTyped(rs, t);
+        ScriptIntrinsicResize resizeIntrinsic = ScriptIntrinsicResize.create(rs);
+
+        resizeIntrinsic.setInput(tmpFiltered);
+        resizeIntrinsic.forEach_bicubic(tmpOut);
+        tmpOut.copyTo(dst);
+
+        tmpFiltered.destroy();
+        tmpOut.destroy();
+        resizeIntrinsic.destroy();
+
+        FileOutputStream out = new FileOutputStream(cacheFile);
+        dst.compress(Bitmap.CompressFormat.JPEG, 100, out);
+
+        Log.v(MainActivity.LOGTAG, "Time taken: " + (System.currentTimeMillis() - before));
     }
 
     public static class Bucket {
