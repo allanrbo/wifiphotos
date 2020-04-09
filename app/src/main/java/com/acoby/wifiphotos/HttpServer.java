@@ -5,6 +5,7 @@ import android.content.res.AssetManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
 import android.net.Uri;
 import android.os.Environment;
 import android.provider.MediaStore;
@@ -128,12 +129,10 @@ public class HttpServer extends NanoHTTPD {
                 try {
                     MessageDigest md5 = MessageDigest.getInstance("MD5");
                     md5.update(contentUri.toString().getBytes());
-                    md5.update((this.getImageLastModified(imageId)+",").getBytes());
-                    md5.update((size+",").getBytes());
+                    md5.update((this.getImageLastModified(imageId) + ",").getBytes());
+                    md5.update((size + ",").getBytes());
                     String hash = this.byteArrayToHex(md5.digest());
                     cacheFile = new File(cacheDir + "/" + hash);
-
-
                 } catch (Exception e) {
                     Log.v(MainActivity.LOGTAG, "Failed to get cache directory. Exception: " + Log.getStackTraceString(e));
                     return this.newFixedLengthResponse(Response.Status.INTERNAL_ERROR, NanoHTTPD.MIME_HTML, "Internal server error");
@@ -145,45 +144,52 @@ public class HttpServer extends NanoHTTPD {
                     // The lock is here as a workaround for out-of-memory when testing on a OnePlus X with many images loading concurrently:
                     //   java.lang.OutOfMemoryError: Failed to allocate a 51916812 byte allocation with 16769248 free bytes and 28MB until OOM
                     synchronized (this) {
-                        Log.v(MainActivity.LOGTAG, "imageId: " + imageId + ", calling openInputStream(" + contentUri.toString() + ")");
-                        InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
-                        Log.v(MainActivity.LOGTAG, "imageId: " + imageId + ", calling BitmapFactory.decodeStream");
-                        Bitmap bm = BitmapFactory.decodeStream(in);
-                        in.close();
-                        int origWidth = bm.getWidth();
-                        int origHeight = bm.getHeight();
-                        int newWidth = (origWidth * size) / origHeight;
-                        int newHeight = size;
-                        if (origWidth > origHeight) {
-                            newWidth = size;
-                            newHeight = (origHeight * size) / origWidth;
+                        int technique = 2;
+                        if (parameters.containsKey("technique")) {
+                            technique = Integer.parseInt(parameters.get("technique").get(0));
                         }
-
-                        Log.v(MainActivity.LOGTAG, "imageId: " + imageId + ", calling Bitmap.createScaledBitmap");
-                        Bitmap sbm = Bitmap.createScaledBitmap(bm, newWidth, newHeight, true);
-                        if (!bm.isRecycled()) {
-                            bm.recycle();
-                        }
-                        FileOutputStream f = new FileOutputStream(cacheFile);
-                        Log.v(MainActivity.LOGTAG,  "imageId: " + imageId + ", calling Bitmap.CompressFormat");
-                        sbm.compress(Bitmap.CompressFormat.JPEG, 80, f);
-                        f.close();
-                        if (!sbm.isRecycled()) {
-                            sbm.recycle();
-                        }
+                        if (technique == 1) resize1(contentUri, cacheFile, size);
+                        if (technique == 2) resize2(contentUri, cacheFile, size);
                     }
                 }
 
-                FileInputStream f = new FileInputStream (cacheFile);
+                FileInputStream f = new FileInputStream(cacheFile);
                 return this.newChunkedResponse(Response.Status.OK, "image/jpeg", f);
 
             } catch (NumberFormatException e) {
                 return this.newFixedLengthResponse(Response.Status.NOT_FOUND, NanoHTTPD.MIME_HTML, "Not found");
             } catch (IOException e) {
+                Log.v(MainActivity.LOGTAG, Log.getStackTraceString(e));
                 return this.newFixedLengthResponse(Response.Status.NOT_FOUND, NanoHTTPD.MIME_HTML, "Not found");
             }
         }
 
+        /*
+         * Clear cache endpoint.
+         */
+        if (uri.equals("/api/clearcache")) {
+            File cacheDir = this.activity.getExternalCacheDir();
+            for(File f : cacheDir .listFiles()) {
+                try {
+                    Log.v(MainActivity.LOGTAG, "Deleting " + f.toString());
+                    f.delete();
+                } catch (Exception e) {
+                    Log.v(MainActivity.LOGTAG, Log.getStackTraceString(e));
+                }
+            }
+
+            cacheDir = this.activity.getCacheDir();
+            for(File f : cacheDir .listFiles()) {
+                try {
+                    Log.v(MainActivity.LOGTAG, "Deleting " + f.toString());
+                    f.delete();
+                } catch (Exception e) {
+                    Log.v(MainActivity.LOGTAG, Log.getStackTraceString(e));
+                }
+            }
+
+            return this.addNoCacheHeaders(this.newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_HTML, "Resized photo cache cleared"));
+        }
 
         return this.newFixedLengthResponse(Response.Status.NOT_FOUND, NanoHTTPD.MIME_HTML, "Not found");
     }
@@ -223,6 +229,95 @@ public class HttpServer extends NanoHTTPD {
         } catch (IOException e) {
             return this.newFixedLengthResponse(Response.Status.NOT_FOUND, NanoHTTPD.MIME_HTML, "Not found");
         }
+    }
+
+    private void resize1(Uri contentUri, File cacheFile, int size) throws IOException {
+        Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling openInputStream");
+        InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
+        Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling BitmapFactory.decodeStream");
+        Bitmap bm = BitmapFactory.decodeStream(in);
+        in.close();
+        int origWidth = bm.getWidth();
+        int origHeight = bm.getHeight();
+        int newWidth = (origWidth * size) / origHeight;
+        int newHeight = size;
+        if (origWidth > origHeight) {
+            newWidth = size;
+            newHeight = (origHeight * size) / origWidth;
+        }
+
+        Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling Bitmap.createScaledBitmap");
+        Bitmap sbm = Bitmap.createScaledBitmap(bm, newWidth, newHeight, true);
+        if (!bm.isRecycled()) {
+            bm.recycle();
+        }
+        FileOutputStream f = new FileOutputStream(cacheFile);
+        Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling Bitmap.CompressFormat");
+        sbm.compress(Bitmap.CompressFormat.JPEG, 70, f);
+        f.close();
+        if (!sbm.isRecycled()) {
+            sbm.recycle();
+        }
+
+    }
+
+    private void resize2(Uri contentUri, File cacheFile, int size) throws IOException {
+        // Based on https://stackoverflow.com/a/4250279/40645
+        // Get the source image's dimensions
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inJustDecodeBounds = true;
+        Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling openInputStream");
+        InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
+        BitmapFactory.decodeStream(in, null, options);
+        in.close();
+
+        int srcWidth = options.outWidth;
+        int srcHeight = options.outHeight;
+
+        // Only scale if the source is big enough. This code is just trying to fit a image into a certain width.
+        if (size > srcWidth)
+            size = srcWidth;
+
+
+        // Calculate the correct inSampleSize/scale value. This helps reduce memory use. It should be a power of 2
+        // from: https://stackoverflow.com/questions/477572/android-strange-out-of-memory-issue/823966#823966
+        int inSampleSize = 1;
+        while (srcWidth / 2 > size) {
+            srcWidth /= 2;
+            srcHeight /= 2;
+            inSampleSize *= 2;
+        }
+
+        float desiredScale = (float) size / srcWidth;
+
+        // Decode with inSampleSize
+        options.inJustDecodeBounds = false;
+        options.inDither = false;
+        options.inSampleSize = inSampleSize;
+        options.inScaled = false;
+        options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        in = this.activity.getContentResolver().openInputStream(contentUri);
+        Bitmap sampledSrcBitmap = BitmapFactory.decodeStream(in, null, options);
+        in.close();
+
+        // Resize
+        Matrix matrix = new Matrix();
+        matrix.postScale(desiredScale, desiredScale);
+        Bitmap scaledBitmap = Bitmap.createBitmap(sampledSrcBitmap, 0, 0, sampledSrcBitmap.getWidth(), sampledSrcBitmap.getHeight(), matrix, true);
+        if (!sampledSrcBitmap.isRecycled()) {
+            sampledSrcBitmap.recycle();
+        }
+        sampledSrcBitmap = null;
+
+        // Save
+        FileOutputStream out = new FileOutputStream(cacheFile);
+        Log.v(MainActivity.LOGTAG, "contentUri: " + contentUri + ", calling Bitmap.CompressFormat");
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 70, out);
+        out.close();
+        if (!scaledBitmap.isRecycled()) {
+            scaledBitmap.recycle();
+        }
+        scaledBitmap = null;
     }
 
     public static class Bucket {
@@ -284,7 +379,7 @@ public class HttpServer extends NanoHTTPD {
 
     private List<Image> getImageIDs(long bucketID) {
         // Query the Android MediaStore API.
-        String[] projection = new String[]{MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DISPLAY_NAME };
+        String[] projection = new String[]{MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DISPLAY_NAME};
         String selection = MediaStore.Images.Media.BUCKET_ID + " == ?";
         String[] selectionArgs = {bucketID + ""};
         String sortOrder = MediaStore.Images.Media.DATE_TAKEN + " DESC";
@@ -310,7 +405,7 @@ public class HttpServer extends NanoHTTPD {
         String sortOrder = MediaStore.Images.Media.DATE_TAKEN + " DESC";
         Cursor cur = this.activity.getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, sortOrder);
 
-        if(cur.moveToNext()) {
+        if (cur.moveToNext()) {
             return cur.getLong(cur.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_MODIFIED));
         }
 
@@ -320,7 +415,7 @@ public class HttpServer extends NanoHTTPD {
 
     private static String byteArrayToHex(byte[] a) {
         StringBuilder sb = new StringBuilder(a.length * 2);
-        for(byte b: a) {
+        for (byte b : a) {
             sb.append(String.format("%02x", b));
         }
         return sb.toString();
