@@ -33,7 +33,7 @@ public class MainActivity extends AppCompatActivity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"wifiphotos.acoby.com::Wakelock1");
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"wifiphotos.acoby.com::Wakelock");
         wakeLock.acquire();
 
         try {
@@ -44,7 +44,6 @@ public class MainActivity extends AppCompatActivity {
             Log.v(LOGTAG, Log.getStackTraceString(e));
         }
     }
-
 
     @Override
     protected void onPause() {

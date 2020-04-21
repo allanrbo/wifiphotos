@@ -6,8 +6,51 @@ body {
     font-family: sans-serif;
 }
 
+a {
+    color: #B7B297;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
 select {
     color: #2c2b2b;
+}
+
+.spinneroverlay {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    top: 0px;
+    left: 0px;
+    background-color: black;
+    opacity: 0.85;
+}
+
+/* https://www.w3schools.com/howto/howto_css_loader.asp */
+.spinneroverlay .spinner {
+    border: 16px solid #595f72;
+    border-radius: 50%;
+    border-top: 16px solid #f3f3f3;
+    width: 120px;
+    height: 120px;
+    -webkit-animation: spin 2s linear infinite; /* Safari */
+    animation: spin 2s linear infinite;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    margin-left: -60px;
+    margin-top: -60px;
+}
+
+/* Safari */
+@-webkit-keyframes spin {
+    0% { -webkit-transform: rotate(0deg); }
+    100% { -webkit-transform: rotate(360deg); }
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 #images {
@@ -28,12 +71,38 @@ select {
     display: inline-block;
     padding: 0.5em;
     overflow: hidden;
+    transition: background-color 0.1s ease-out, color 0.1s ease-out;
+}
+
+.image.selected {
+    color: #C5C5C5;
+    background-color: #686868;
+    transition: background-color 0.1s ease-in, color 0.1s ease-in;
 }
 
 .image img {
     position: absolute;
-    top: 50%; left: 50%;
+    top: 50%;
+    left: 50%;
     transform: translate(-50%,-50%);
+    max-height: 100%;
+    max-width: 100%;
+    transition: max-height 0.1s ease-out, max-width 0.1s ease-out, box-shadow 0.1s ease-out;
+}
+
+.image.selected img {
+    max-height: 80%;
+    max-width: 80%;
+    transition: max-height 0.1s ease-in, max-width 0.1s ease-in, box-shadow 0.1s ease-in;
+    box-shadow: 0 0 3em 0.5em #e8e8e8;
+}
+
+.image .imglabel {
+    position: absolute;
+    font-size: 7px;
+    font-family: "Small Fonts";
+    top: 0px;
+    left: 2px;
 }
 
 .topbar {
@@ -43,6 +112,8 @@ select {
     background-color: #404040;
     border-bottom: 1px solid #5c5c5c;
     padding: 0.4em 0.5em 0.2em 0.5em;
+    display: flex;
+    flex-wrap: wrap;
 }
 
 .topbar #collection {
@@ -51,4 +122,10 @@ select {
 
 .topbarspacer {
     height: 2em;
+}
+
+.topbar .control {
+    margin-right: 2em;
+    display: inline;
+    white-space: nowrap;
 }

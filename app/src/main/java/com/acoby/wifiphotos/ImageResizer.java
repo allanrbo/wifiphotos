@@ -13,10 +13,13 @@ import android.renderscript.ScriptIntrinsicBlur;
 import android.renderscript.ScriptIntrinsicResize;
 import android.renderscript.Type;
 import android.util.Log;
+import android.util.Size;
 
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -50,15 +53,13 @@ public class ImageResizer {
         }
     }
 
-    public File getResizedImageFile(long imageID, int size, int quality) throws IOException {
+    public File getResizedImageFile(long imageID, boolean isTrash, int size, int quality) throws IOException {
         long before = System.currentTimeMillis();
-
-        Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageID);
 
         // Get source image dimensions.
         BitmapFactory.Options options = new BitmapFactory.Options();
         options.inJustDecodeBounds = true;
-        InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
+        InputStream in = this.openOrigImage(imageID, isTrash);
         BitmapFactory.decodeStream(in, null, options);
         in.close();
         int srcWidth = options.outWidth;
@@ -95,16 +96,28 @@ public class ImageResizer {
             // The lock is here as a workaround for out-of-memory when testing on a OnePlus X with many images loading concurrently:
             //   java.lang.OutOfMemoryError: Failed to allocate a 51916812 byte allocation with 16769248 free bytes and 28MB until OOM
             synchronized (this) {
+                in = this.openOrigImage(imageID, isTrash);
+
                 if (quality == QUALITY_LOW) {
-                    this.resizeLowQuality(contentUri, cacheFile, srcWidth, srcHeight, dstWidth, dstHeight);
+                    this.resizeLowQuality(in, cacheFile, srcWidth, srcHeight, dstWidth, dstHeight);
                 } else {
-                    this.resizeHighQuality(contentUri, cacheFile, srcWidth, srcHeight, dstWidth, dstHeight);
+                    this.resizeHighQuality(in, cacheFile, srcWidth, srcHeight, dstWidth, dstHeight);
                 }
             }
         }
 
         Log.v(MainActivity.LOGTAG, "getResizedImageFile time taken: " + (System.currentTimeMillis() - before));
         return cacheFile;
+    }
+
+    private InputStream openOrigImage(long imageID, boolean isTrash) throws FileNotFoundException {
+        if (isTrash) {
+            File dir = this.activity.getExternalFilesDir("trash");
+            return new FileInputStream(dir + "/" + imageID + ".jpeg");
+        }
+
+        Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageID);
+        return this.activity.getContentResolver().openInputStream(contentUri);
     }
 
     private String generateCacheFilePath(long imageID, long imageLastModified, int size, int quality) {
@@ -139,7 +152,7 @@ public class ImageResizer {
         return lastModified;
     }
 
-    private void resizeLowQuality(Uri contentUri, File cacheFile, int srcWidth, int srcHeight, int dstWidth, int dstHeight) throws IOException {
+    private void resizeLowQuality(InputStream in, File cacheFile, int srcWidth, int srcHeight, int dstWidth, int dstHeight) throws IOException {
         // Based on https://stackoverflow.com/a/4250279/40645
 
         long before = System.currentTimeMillis();
@@ -162,7 +175,6 @@ public class ImageResizer {
         options.inSampleSize = inSampleSize;
         options.inScaled = false;
         options.inPreferredConfig = Bitmap.Config.ARGB_8888;
-        InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
         Bitmap sampledSrcBitmap = BitmapFactory.decodeStream(in, null, options);
         in.close();
 
@@ -183,7 +195,7 @@ public class ImageResizer {
         out.close();
     }
 
-    private void resizeHighQuality(Uri contentUri, File cacheFile, int srcWidth, int srcHeight, int dstWidth, int dstHeight) throws IOException {
+    private void resizeHighQuality(InputStream in, File cacheFile, int srcWidth, int srcHeight, int dstWidth, int dstHeight) throws IOException {
         // Based on https://medium.com/@petrakeas/alias-free-resize-with-renderscript-5bf15a86ce3
 
         float resizeRatio = (float) srcWidth / dstWidth;
@@ -194,7 +206,6 @@ public class ImageResizer {
         float radius = 2.5f * sigma - 1.5f;
         radius = Math.min(25, Math.max(0.0001f, radius));
 
-        InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
         Bitmap src = BitmapFactory.decodeStream(in);
         in.close();
         Bitmap.Config bitmapConfig = src.getConfig();
