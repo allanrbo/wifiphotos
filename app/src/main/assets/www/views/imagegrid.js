@@ -5,17 +5,22 @@ var ImageGrid = {
     imageQuality: "high",
     selectedImageIDs: [],
     previouslyViewedCollection: 0,
+    imagesBoxesToRenderStart: 0,
+    imagesBoxesToRenderEnd: 30,
 
     oninit: function() {
         Bucket.list = [];
         Bucket.currentId = null;
         Image.list = [];
         Bucket.loadList().then(function() {
-            Image.loadList(Bucket.currentId);
-        })
+            Image.loadList(Bucket.currentId).then(function() {
+            })
+        });
 
         function checkImagesInView() {
             ImageGrid.checkImagesInViewPending = false;
+
+            var changed = false;
 
             var scrollTop = document.documentElement.scrollTop;
             var scrollBottom = scrollTop + window.innerHeight;
@@ -35,7 +40,6 @@ var ImageGrid = {
             }
 
             // Update the model Image.list to indicate which images are visible.
-            var changed = false;
             for (var i = 0; i < Image.list.length; i++) {
                 var shouldBeVisible = false;
                 for (var j = 0; j < inView.length; j++) {
@@ -49,6 +53,15 @@ var ImageGrid = {
                     Image.list[i].visible = shouldBeVisible;
                     changed = true;
                 }
+            }
+
+            // Decide if we are scrolled down long enough for us to add more image div's.
+            var de = document.documentElement;
+            var db = document.body;
+            var docHeight = Math.max(db.scrollHeight, de.scrollHeight, db.offsetHeight, de.offsetHeight, db.clientHeight, de.clientHeight); // https://j11y.io/snippets/get-document-height-cross-browser/
+            if (scrollBottom > docHeight - window.innerHeight) {
+                ImageGrid.imagesBoxesToRenderStart += inView.length;
+                changed = true;
             }
 
             if (changed) {
@@ -132,6 +145,8 @@ var ImageGrid = {
             }
         };
 
+        var images = Image.list.slice(ImageGrid.imagesBoxesToRenderStart, ImageGrid.imagesBoxesToRenderEnd);
+
         return [
             m(".topbarspacer"),
 
@@ -144,7 +159,7 @@ var ImageGrid = {
                         ImageGrid.selectedImageIDs = [];
                     }
                 }},
-                Image.list.map(function(image) {
+                images.map(function(image) {
                     var selected = "";
                     for (var i = 0; i < ImageGrid.selectedImageIDs.length; i++) {
                         if (ImageGrid.selectedImageIDs[i] == image.imageId) {
@@ -179,8 +194,8 @@ var ImageGrid = {
                         // Actual <img>.
                         image.visible ? [
                             m("img", {src: apiUrl + "/images/" + (isTrash ? "trash/" : "") + image.imageId + "?size=" + ImageGrid.imageSize + "&quality=" + ImageGrid.imageQuality}),
-                            m(".imglabel", image.name)
-                        ] : ""
+                        ] : "",
+                        m(".imglabel", image.name)
                     ]);
                 })
             ),
