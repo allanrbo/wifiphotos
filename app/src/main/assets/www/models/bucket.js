@@ -13,9 +13,11 @@ var Bucket = {
             Bucket.list = result;
 
             if (Bucket.currentId == null) {
+                Bucket.currentId = Bucket.list[0].id;
                 for (var i = 0; i < Bucket.list.length; i++) {
                     if (Bucket.list[i].isCameraBucket) {
                         Bucket.currentId = Bucket.list[i].id;
+                        break;
                     }
                 }
             }
