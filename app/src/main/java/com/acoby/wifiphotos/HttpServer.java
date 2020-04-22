@@ -40,7 +40,6 @@ import static android.database.Cursor.FIELD_TYPE_INTEGER;
 import static android.database.Cursor.FIELD_TYPE_STRING;
 
 public class HttpServer extends NanoHTTPD {
-    final static boolean COMPILE_WITH_DEBUG_FEATURES = false;
 
     AppCompatActivity activity;
     Gson gson;
@@ -90,7 +89,7 @@ public class HttpServer extends NanoHTTPD {
     }
 
     private Response addCorsHeaders(Response r) {
-        if (HttpServer.COMPILE_WITH_DEBUG_FEATURES) {
+        if (DebugFeatures.COMPILE_WITH_DEBUG_FEATURES) {
             r.addHeader("Access-Control-Allow-Origin", "*");
             r.addHeader("Access-Control-Max-Age", "86400");
             r.addHeader("Access-Control-Allow-Methods", "*");
@@ -106,7 +105,7 @@ public class HttpServer extends NanoHTTPD {
     private Response serveApi(IHTTPSession session) {
         String uri = session.getUri();
 
-        if (HttpServer.COMPILE_WITH_DEBUG_FEATURES) {
+        if (DebugFeatures.COMPILE_WITH_DEBUG_FEATURES) {
             // Access-Control headers (CORS) are received during OPTIONS requests.
             if (session.getMethod() == Method.OPTIONS) {
                 Response r = this.newFixedLengthResponse(Response.Status.OK, "application/json", "{\"status\": \"ok\"}");
@@ -263,7 +262,7 @@ public class HttpServer extends NanoHTTPD {
         /*
          * Clear cache endpoint.
          */
-        if (HttpServer.COMPILE_WITH_DEBUG_FEATURES) {
+        if (DebugFeatures.COMPILE_WITH_DEBUG_FEATURES) {
             if (uri.equals("/api/clearcache")) {
                 if (session.getMethod() == Method.POST) {
                     File[] cacheDirs = new File[]{this.activity.getExternalCacheDir(), this.activity.getCacheDir()};
