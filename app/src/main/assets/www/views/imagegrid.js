@@ -9,23 +9,10 @@ var ImageGrid = {
     oninit: function() {
         Bucket.list = [];
         Bucket.currentId = null;
-        Bucket.loadList();
-
         Image.list = [];
-        Image.listRequested = false;
-    },
-
-    view: function(vnode) {
-        if (Bucket.currentId != null && !Image.listRequested) {
+        Bucket.loadList().then(function() {
             Image.loadList(Bucket.currentId);
-        }
-
-        var loading = false;
-        if (!Bucket.listLoaded || !Image.listLoaded) {
-            loading = true;
-        }
-
-        var isTrash = Bucket.currentId == "trash";
+        })
 
         function checkImagesInView() {
             ImageGrid.checkImagesInViewPending = false;
@@ -79,6 +66,15 @@ var ImageGrid = {
         setTimeout(scrollHandler, 1);
         window.addEventListener('scroll', scrollHandler, false);
         window.addEventListener('resize', scrollHandler, false);
+    },
+
+    view: function(vnode) {
+        var loading = false;
+        if (!Bucket.listLoaded || !Image.listLoaded) {
+            loading = true;
+        }
+
+        var isTrash = Bucket.currentId == "trash";
 
         var moveToTrash = function() {
             var promises = [];
@@ -86,8 +82,7 @@ var ImageGrid = {
                 promises.push(Image.delete(ImageGrid.selectedImageIDs[i], isTrash));
             }
 
-            Promise.all(promises)
-            .then(function(a) {
+            Promise.all(promises).then(function() {
                 Image.loadList(Bucket.currentId);
                 ImageGrid.selectedImageIDs = [];
            });
@@ -176,16 +171,16 @@ var ImageGrid = {
                     }
 
                     return m("div.image" + selected, {
+                        "id": "img" + image.imageId,
                         "data-id": image.imageId,
                         style: "width: " + ImageGrid.imageSize + "px; " + "height: " + ImageGrid.imageSize + "px;",
                         onmousedown: selectImage
                     }, [
                         // Actual <img>.
                         image.visible ? [
-                            m("img", {src: apiUrl + "/images/" + (isTrash ? "trash/" : "") + image.imageId + "?size=" + ImageGrid.imageSize + "&quality=" + ImageGrid.imageQuality})
-                        ] : "",
-
-                        m(".imglabel", image.name)
+                            m("img", {src: apiUrl + "/images/" + (isTrash ? "trash/" : "") + image.imageId + "?size=" + ImageGrid.imageSize + "&quality=" + ImageGrid.imageQuality}),
+                            m(".imglabel", image.name)
+                        ] : ""
                     ]);
                 })
             ),

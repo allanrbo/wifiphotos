@@ -1,12 +1,9 @@
 var Image = {
     list: [],
     listLoaded: false,
-    listRequested: false,
 
     loadList: function(bucketId) {
-        Image.list = [];
         Image.listLoaded = false;
-        Image.listRequested = true;
         return m.request({
             method: "GET",
             url: apiUrl + "/buckets/" + bucketId,
