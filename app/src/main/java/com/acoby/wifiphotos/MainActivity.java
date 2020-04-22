@@ -1,7 +1,9 @@
 package com.acoby.wifiphotos;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.pm.PackageManager;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
@@ -17,6 +19,7 @@ public class MainActivity extends AppCompatActivity {
 
     private HttpServer httpServer;
     private PowerManager.WakeLock wakeLock;
+    private WifiManager.WifiLock wifiLock;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,8 +36,12 @@ public class MainActivity extends AppCompatActivity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"wifiphotos.acoby.com::Wakelock");
-        wakeLock.acquire();
+        this.wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"wifiphotos.acoby.com::Wakelock");
+        this.wakeLock.acquire();
+
+        WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        this.wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF , "wifiphotos.acoby.com::WifiLock");
+        this.wifiLock.acquire();
 
         try {
             Log.v(LOGTAG,"Starting HTTP server");
@@ -49,7 +56,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
 
-        wakeLock.release();
+        if (wakeLock != null) {
+            wakeLock.release();
+        }
+
+        if (wifiLock != null) {
+            wifiLock.release();
+        }
 
         if (this.httpServer != null) {
             this.httpServer.stop();
