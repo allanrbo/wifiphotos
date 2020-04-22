@@ -73,6 +73,8 @@ public class HttpServer extends NanoHTTPD {
 
             return this.addCorsHeaders(this.serveStaticFiles(session));
         } catch(Exception e) {
+            Log.v(MainActivity.LOGTAG, Log.getStackTraceString(e));
+
             Map<String,String> m = new HashMap<>();
             m.put("status", "error");
             m.put("message", "Internal error: " + e.getClass().getName() + ": " + e.getMessage());
@@ -379,18 +381,22 @@ public class HttpServer extends NanoHTTPD {
     public static class Image {
         public long imageId;
         public long dateTaken;
+        public long dateModified;
+        public long size;
         public String name;
 
-        public Image(long imageId, long dateTaken, String name) {
+        public Image(long imageId, long dateTaken, long dateModified, long size, String name) {
             this.imageId = imageId;
             this.dateTaken = dateTaken;
+            this.dateModified = dateModified;
+            this.size = size;
             this.name = name;
         }
     }
 
     private List<Image> getImageIDs(long bucketID) {
         // Query the Android MediaStore API.
-        String[] projection = new String[]{MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DISPLAY_NAME};
+        String[] projection = new String[]{MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DATE_MODIFIED, MediaStore.Images.Media.SIZE, MediaStore.Images.Media.DISPLAY_NAME};
         String selection = MediaStore.Images.Media.BUCKET_ID + " == ?";
         String[] selectionArgs = {bucketID + ""};
         String sortOrder = MediaStore.Images.Media.DATE_TAKEN + " DESC";
@@ -398,11 +404,13 @@ public class HttpServer extends NanoHTTPD {
 
         int idIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
         int dateTakenIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN);
+        int dateModifiedIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_MODIFIED);
+        int sizeIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE);
         int displayNameIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME);
 
         List<Image> imageIDs = new ArrayList<Image>();
         while (cur.moveToNext()) {
-            imageIDs.add(new Image(cur.getLong(idIdx), cur.getLong(dateTakenIdx), cur.getString(displayNameIdx)));
+            imageIDs.add(new Image(cur.getLong(idIdx), cur.getLong(dateTakenIdx), cur.getLong(dateModifiedIdx), cur.getLong(sizeIdx), cur.getString(displayNameIdx)));
         }
         cur.close();
 
@@ -416,6 +424,8 @@ public class HttpServer extends NanoHTTPD {
             if (f.endsWith(".jpeg")) {
                 long id = Long.parseLong(f.replace(".jpeg", ""));
                 long dateTaken = 0;
+                long dateModified = 0;
+                long size = 0;
                 String name = "" + id;
 
                 File metaDataFile = new File(dir + "/" + f + ".json");
@@ -429,12 +439,14 @@ public class HttpServer extends NanoHTTPD {
 
                         name = (String) vals.get(MediaStore.Images.Media.DISPLAY_NAME);
                         dateTaken = (long) vals.get(MediaStore.Images.Media.DATE_TAKEN);
+                        dateModified = (long) vals.get(MediaStore.Images.Media.DATE_MODIFIED);
+                        size = (long) vals.get(MediaStore.Images.Media.SIZE);
                         id = (long) vals.get(MediaStore.Images.Media._ID);
                     } catch (Exception e) {
                     }
                 }
 
-                images.add(new Image(id, dateTaken, name));
+                images.add(new Image(id, dateTaken, dateModified, size, name));
             }
         }
 
