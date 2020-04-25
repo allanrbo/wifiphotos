@@ -15,7 +15,7 @@ import androidx.core.app.ActivityCompat;
 
 public class MainActivity extends AppCompatActivity {
 
-    public static String LOGTAG = "WifiPhotos";
+    public static String TAG = "WifiPhotos";
 
     private HttpServer httpServer;
     private PowerManager.WakeLock wakeLock;
@@ -44,11 +44,11 @@ public class MainActivity extends AppCompatActivity {
         this.wifiLock.acquire();
 
         try {
-            Log.v(LOGTAG,"Starting HTTP server");
+            Log.v(TAG,"Starting HTTP server");
             this.httpServer = new HttpServer(this);
             this.httpServer.start();
         } catch(Exception e) {
-            Log.v(LOGTAG, Log.getStackTraceString(e));
+            Log.v(TAG, Log.getStackTraceString(e));
         }
     }
 
@@ -78,7 +78,7 @@ public class MainActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         for (int r : grantResults) {
             if (r != PackageManager.PERMISSION_GRANTED) {
-                Log.v(LOGTAG,"Permissions not granted");
+                Log.v(TAG,"Permissions not granted");
                 if (this.httpServer != null) {
                     this.httpServer.stop();
                 }
@@ -90,16 +90,16 @@ public class MainActivity extends AppCompatActivity {
     private void ensurePermissionsGranted() {
         if (Build.VERSION.SDK_INT >= 23) {
             if (this.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                Log.v(LOGTAG,"Requesting permission READ_EXTERNAL_STORAGE");
+                Log.v(TAG,"Requesting permission READ_EXTERNAL_STORAGE");
                 ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 100);
             }
 
             if (this.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                Log.v(LOGTAG,"Requesting permission WRITE_EXTERNAL_STORAGE");
+                Log.v(TAG,"Requesting permission WRITE_EXTERNAL_STORAGE");
                 ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 200);
             }
         } else {
-            Log.v(LOGTAG,"Permissions READ_EXTERNAL_STORAGE and WRITE_EXTERNAL_STORAGE automatically granted because SDK was older than version 23");
+            Log.v(TAG,"Permissions READ_EXTERNAL_STORAGE and WRITE_EXTERNAL_STORAGE automatically granted because SDK was older than version 23");
         }
     }
 }

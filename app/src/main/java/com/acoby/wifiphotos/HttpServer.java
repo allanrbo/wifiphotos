@@ -71,7 +71,7 @@ public class HttpServer extends NanoHTTPD {
 
         try {
             String uri = session.getUri();
-            Log.v(MainActivity.LOGTAG, "Got " + session.getMethod() + " request with URI " + uri);
+            Log.v(MainActivity.TAG, "Got " + session.getMethod() + " request with URI " + uri);
 
             if (uri.startsWith("/api/")) {
                 return this.addCorsHeaders(this.serveApi(session));
@@ -79,7 +79,7 @@ public class HttpServer extends NanoHTTPD {
 
             return this.addCorsHeaders(this.serveStaticFiles(session));
         } catch(Exception e) {
-            Log.v(MainActivity.LOGTAG, Log.getStackTraceString(e));
+            Log.v(MainActivity.TAG, Log.getStackTraceString(e));
 
             Map<String,String> m = new HashMap<>();
             m.put("status", "error");
@@ -199,7 +199,7 @@ public class HttpServer extends NanoHTTPD {
                     FileInputStream f = new FileInputStream(resizedImageFile);
                     return this.newChunkedResponse(Response.Status.OK, "image/jpeg", f);
                 } catch (IOException e) {
-                    Log.v(MainActivity.LOGTAG, Log.getStackTraceString(e));
+                    Log.v(MainActivity.TAG, Log.getStackTraceString(e));
                     return this.apiNotFoundResponse;
                 }
             }
@@ -212,14 +212,14 @@ public class HttpServer extends NanoHTTPD {
                     try {
                         this.deleteImageFromTrash(imageID);
                     } catch (Exception e) {
-                        Log.v(MainActivity.LOGTAG, Log.getStackTraceString(e));
+                        Log.v(MainActivity.TAG, Log.getStackTraceString(e));
                         return this.newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json", "{\"status\":\"error\",\"message\":\"Error while deleting image\"}");
                     }
                 } else {
                     try {
                         this.moveImageToTrash(imageID);
                     } catch (Exception e) {
-                        Log.v(MainActivity.LOGTAG, Log.getStackTraceString(e));
+                        Log.v(MainActivity.TAG, Log.getStackTraceString(e));
                         return this.newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json", "{\"status\":\"error\",\"message\":\"Error while moving image to trash\"}");
                     }
                 }
@@ -269,10 +269,10 @@ public class HttpServer extends NanoHTTPD {
                     for (File cacheDir : cacheDirs) {
                         for (File f : cacheDir.listFiles()) {
                             try {
-                                Log.v(MainActivity.LOGTAG, "Deleting " + f.toString());
+                                Log.v(MainActivity.TAG, "Deleting " + f.toString());
                                 f.delete();
                             } catch (Exception e) {
-                                Log.v(MainActivity.LOGTAG, Log.getStackTraceString(e));
+                                Log.v(MainActivity.TAG, Log.getStackTraceString(e));
                             }
                         }
                     }
@@ -457,7 +457,7 @@ public class HttpServer extends NanoHTTPD {
 
         File dir = this.activity.getExternalFilesDir("trash");
         File filePath = new File(dir + "/" + imageID + ".jpeg");
-        Log.v(MainActivity.LOGTAG, "Moving to trash: " + filePath);
+        Log.v(MainActivity.TAG, "Moving to trash: " + filePath);
 
         // Copy meta data to trash directory.
         Cursor cur = this.activity.getContentResolver().query(contentUri, null, null, null, null);
@@ -475,7 +475,7 @@ public class HttpServer extends NanoHTTPD {
             }
         }
         OutputStream out = new FileOutputStream(filePath + ".json");
-        Log.v(MainActivity.LOGTAG, this.gson.toJson(vals));
+        Log.v(MainActivity.TAG, this.gson.toJson(vals));
         out.write(this.gson.toJson(vals).getBytes());
         out.close();
 
@@ -506,7 +506,7 @@ public class HttpServer extends NanoHTTPD {
     private void restoreImageFromTrash(long imageID) throws IOException {
         File dir = this.activity.getExternalFilesDir("trash");
         File file = new File(dir + "/" + imageID + ".jpeg");
-        Log.v(MainActivity.LOGTAG, "Restoring from trash: " + file);
+        Log.v(MainActivity.TAG, "Restoring from trash: " + file);
 
         // Read meta data from meta data file in trash directory.
         Map<String,String> vals = new HashMap<>();

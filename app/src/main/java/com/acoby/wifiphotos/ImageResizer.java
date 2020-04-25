@@ -73,17 +73,17 @@ public class ImageResizer {
 
                         this.resize(jpegData, cacheFile, size);
 
-                        Log.v(MainActivity.LOGTAG, "Resized image " + imageID + " in " + (System.currentTimeMillis() - before) + "ms");
+                        Log.v(MainActivity.TAG, "Resized image " + imageID + " in " + (System.currentTimeMillis() - before) + "ms");
                         break;
                     } catch (FileNotFoundException e) {
                         throw e;
                     } catch (Throwable e) { // Throwable instead of Exception to also get OutOfMemoryError
-                        Log.v(MainActivity.LOGTAG, "Got exception while resizing image " + imageID);
-                        Log.v(MainActivity.LOGTAG, Log.getStackTraceString(e));
+                        Log.v(MainActivity.TAG, "Got exception while resizing image " + imageID);
+                        Log.v(MainActivity.TAG, Log.getStackTraceString(e));
                         if (retries++ > 5) {
                             throw e;
                         }
-                        Log.v(MainActivity.LOGTAG, "Retrying");
+                        Log.v(MainActivity.TAG, "Retrying");
                         try {
                             Thread.sleep(500);
                         } catch(InterruptedException e2) {
