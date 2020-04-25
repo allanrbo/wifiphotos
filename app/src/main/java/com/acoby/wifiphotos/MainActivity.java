@@ -15,7 +15,7 @@ import androidx.core.app.ActivityCompat;
 
 public class MainActivity extends AppCompatActivity {
 
-    public static String LOGTAG = "wifiphotos.acoby.com";
+    public static String LOGTAG = "WifiPhotos";
 
     private HttpServer httpServer;
     private PowerManager.WakeLock wakeLock;

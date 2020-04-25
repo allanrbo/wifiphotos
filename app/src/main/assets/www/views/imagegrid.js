@@ -1,8 +1,7 @@
 var ImageGrid = {
 
     checkImagesInViewPending: false,
-    imageSize: 500,
-    imageQuality: "high",
+    imageSize: 600,
     selectedImageIDs: [],
     previouslyViewedCollection: 0,
     imagesBoxesToRenderStart: 0,
@@ -17,68 +16,13 @@ var ImageGrid = {
             })
         });
 
-        function checkImagesInView() {
-            ImageGrid.checkImagesInViewPending = false;
-
-            var changed = false;
-
-            var scrollTop = document.documentElement.scrollTop;
-            var scrollBottom = scrollTop + window.innerHeight;
-
-            // Loop over each image in the DOM and check if it is visible.
-            var inView = [];
-            var images = document.getElementById("images");
-            for (var i = 0; i < images.children.length; i++) {
-                var image = images.children[i];
-                var r = image.getBoundingClientRect();
-                var imageTop = r.top + document.documentElement.scrollTop;
-                var imageBottom = r.bottom + document.documentElement.scrollTop;
-
-                if (scrollTop-ImageGrid.imageSize*2 <= imageTop && imageBottom <= scrollBottom+ImageGrid.imageSize*2) {
-                    inView.push(image.attributes["data-id"].value);
-                }
+        window.addEventListener('scroll', ImageGrid.scrollHandler, false);
+        window.addEventListener('resize', ImageGrid.scrollHandler, false);
+        window.addEventListener('keydown', function(e) {
+            if (e.keyCode == 46) { // Delete key
+                ImageGrid.deleteSelected();
             }
-
-            // Update the model Image.list to indicate which images are visible.
-            for (var i = 0; i < Image.list.length; i++) {
-                var shouldBeVisible = false;
-                for (var j = 0; j < inView.length; j++) {
-                    if (Image.list[i].imageId == inView[j]) {
-                        shouldBeVisible = true;
-                        break;
-                    }
-                }
-
-                if (Image.list[i].visible != shouldBeVisible) {
-                    Image.list[i].visible = shouldBeVisible;
-                    changed = true;
-                }
-            }
-
-            // Decide if we are scrolled down long enough for us to add more image div's.
-            var de = document.documentElement;
-            var db = document.body;
-            var docHeight = Math.max(db.scrollHeight, de.scrollHeight, db.offsetHeight, de.offsetHeight, db.clientHeight, de.clientHeight); // https://j11y.io/snippets/get-document-height-cross-browser/
-            if (scrollBottom > docHeight - window.innerHeight) {
-                ImageGrid.imagesBoxesToRenderStart += inView.length;
-                changed = true;
-            }
-
-            if (changed) {
-                m.redraw();
-            }
-        }
-
-        function scrollHandler(e) {
-            if (!ImageGrid.checkImagesInViewPending) {
-                ImageGrid.checkImagesInViewPending = true;
-                setTimeout(checkImagesInView, 400);
-            }
-        }
-
-        setTimeout(scrollHandler, 1);
-        window.addEventListener('scroll', scrollHandler, false);
-        window.addEventListener('resize', scrollHandler, false);
+        }, false);
     },
 
     view: function(vnode) {
@@ -88,49 +32,6 @@ var ImageGrid = {
         }
 
         var isTrash = Bucket.currentId == "trash";
-
-        var moveToTrash = function() {
-            var promises = [];
-            for (var i = 0; i < ImageGrid.selectedImageIDs.length; i++) {
-                promises.push(Image.delete(ImageGrid.selectedImageIDs[i], isTrash));
-            }
-
-            Promise.all(promises).then(function() {
-                Image.loadList(Bucket.currentId);
-                ImageGrid.selectedImageIDs = [];
-           });
-        };
-
-        var deletePermanently = function() {
-            var r = confirm("Permanently delete the selected items?");
-            if (r == true) {
-                moveToTrash();
-            }
-        }
-
-        var restoreFromTrash = function() {
-            var promises = [];
-            for (var i = 0; i < ImageGrid.selectedImageIDs.length; i++) {
-                promises.push(Image.restore(ImageGrid.selectedImageIDs[i]));
-            }
-
-            Promise.all(promises)
-            .then(function(a) {
-                Image.loadList(Bucket.currentId);
-                ImageGrid.selectedImageIDs = [];
-           });
-        };
-
-        var viewTrash = function() {
-            ImageGrid.previouslyViewedCollection = Bucket.currentId;
-            Bucket.currentId = "trash";
-            Image.loadList(Bucket.currentId);
-        }
-
-        var returnToPreviouslyViewedCollection = function() {
-            Bucket.currentId = ImageGrid.previouslyViewedCollection;
-            Image.loadList(Bucket.currentId);
-        }
 
         var clearImgSrcs = function() {
             // Clear all src attributes of images. This is to
@@ -158,6 +59,9 @@ var ImageGrid = {
                     if (e.target.id == "images") {
                         ImageGrid.selectedImageIDs = [];
                     }
+                },
+                onupdate: function() {
+                    ImageGrid.scrollHandler();
                 }},
                 images.map(function(image) {
                     var selected = "";
@@ -193,7 +97,7 @@ var ImageGrid = {
                     }, [
                         // Actual <img>.
                         image.visible ? [
-                            m("img", {src: apiUrl + "/images/" + (isTrash ? "trash/" : "") + image.imageId + "?size=" + ImageGrid.imageSize + "&quality=" + ImageGrid.imageQuality}),
+                            m("img", {src: apiUrl + "/images/" + (isTrash ? "trash/" : "") + image.imageId + "?size=" + ImageGrid.imageSize}),
                         ] : "",
                         m(".imglabel", image.name)
                     ]);
@@ -210,6 +114,7 @@ var ImageGrid = {
                     m("select#collection",
                         {
                             onchange: function(e) {
+                                Image.list = [];
                                 Bucket.currentId = e.target.value;
                                 Image.loadList(Bucket.currentId);
                             },
@@ -230,6 +135,7 @@ var ImageGrid = {
                             onchange: function(e) {
                                 ImageGrid.imageSize = e.target.value;
                                 clearImgSrcs();
+                                ImageGrid.scrollHandler();
                             }
                         },
                         [100,200,300,400,500,600,700,800,900,1000].map(function(s) {
@@ -241,47 +147,32 @@ var ImageGrid = {
                         })
                     )
                 ]),
-                m(".control", [
-                    m("label[for=quality]", "Quality"),
-                    " ",
-                    m("select#quality",
-                        {
-                            onchange: function(e) {
-                                ImageGrid.imageQuality = e.target.value;
-                                clearImgSrcs();
-                            }                        },
-                        [
-                            m("option", {value: "high"}, "High (slow)"),
-                            m("option", {value: "low"}, "Low (fast)")
-                        ]
-                    )
-                ]),
                 !isTrash ? [
                     m(".control", [
-                        m("span.fa.fa-trash-o", { onclick: moveToTrash } ),
+                        m("span.fa.fa-trash-o", { onclick: ImageGrid.deleteSelected } ),
                         " ",
-                        m("a", { onclick: moveToTrash }, "Move to trash")
+                        m("a", { onclick: ImageGrid.deleteSelected }, "Move to trash")
                     ]),
                     m(".control", [
-                        m("a", { onclick: viewTrash }, "View trash")
+                        m("a", { onclick: ImageGrid.viewTrash }, "View trash")
                     ])
                 ] : [
                     m(".control", [
-                        m("span.fa.fa-reply", { onclick: restoreFromTrash } ),
+                        m("span.fa.fa-reply", { onclick: ImageGrid.restoreSelectedFromTrash } ),
                         " ",
-                        m("a", { onclick: restoreFromTrash }, "Restore from trash")
+                        m("a", { onclick: ImageGrid.restoreSelectedFromTrash }, "Restore from trash")
                     ]),
                     m(".control", [
-                        m("span.fa.fa-times", { onclick: deletePermanently }
+                        m("span.fa.fa-times", { onclick: ImageGrid.deleteSelected }
                         ),
                         " ",
-                        m("a", { onclick: deletePermanently }, "Delete permanently")
+                        m("a", { onclick: ImageGrid.deleteSelected }, "Delete permanently")
                     ]),
                     m(".control", [
-                        m("span.fa.fa-arrow-left", { onclick: returnToPreviouslyViewedCollection }
+                        m("span.fa.fa-arrow-left", { onclick: ImageGrid.returnToPreviouslyViewedCollection }
                         ),
                         " ",
-                        m("a", { onclick: returnToPreviouslyViewedCollection }, "Return")
+                        m("a", { onclick: ImageGrid.returnToPreviouslyViewedCollection }, "Return")
                     ])
                 ]
             ]),
@@ -289,5 +180,111 @@ var ImageGrid = {
             // This needs to be last, to overlay everything else.
             loading ? m(".spinneroverlay", m(".spinner")) : null
         ];
+    },
+
+    checkImagesInView: function () {
+        ImageGrid.checkImagesInViewPending = false;
+
+        var changed = false;
+
+        var scrollTop = document.documentElement.scrollTop;
+        var scrollBottom = scrollTop + window.innerHeight;
+
+        // Loop over each image div in the DOM and check if it is visible.
+        var inView = [];
+        var images = document.getElementById("images");
+        for (var i = 0; i < images.children.length; i++) {
+            var image = images.children[i];
+            var r = image.getBoundingClientRect();
+            var imageTop = r.top + document.documentElement.scrollTop;
+            var imageBottom = r.bottom + document.documentElement.scrollTop;
+
+            if (scrollTop-ImageGrid.imageSize*2 <= imageTop && imageBottom <= scrollBottom+ImageGrid.imageSize*2) {
+                inView.push(image.attributes["data-id"].value);
+            }
+        }
+
+        // Update the model Image.list to indicate which images are visible.
+        for (var i = 0; i < Image.list.length; i++) {
+            var shouldBeVisible = false;
+            for (var j = 0; j < inView.length; j++) {
+                if (Image.list[i].imageId == inView[j]) {
+                    shouldBeVisible = true;
+                    break;
+                }
+            }
+
+            if (Image.list[i].visible != shouldBeVisible) {
+                Image.list[i].visible = shouldBeVisible;
+                changed = true;
+            }
+        }
+
+        // Decide if we are scrolled down long enough for us to add more image div's.
+        var de = document.documentElement;
+        var db = document.body;
+        var docHeight = Math.max(db.scrollHeight, de.scrollHeight, db.offsetHeight, de.offsetHeight, db.clientHeight, de.clientHeight); // https://j11y.io/snippets/get-document-height-cross-browser/
+        if (scrollBottom > docHeight - window.innerHeight && Image.list.length > ImageGrid.imagesBoxesToRenderEnd) {
+            ImageGrid.imagesBoxesToRenderEnd += inView.length;
+            changed = true;
+        }
+
+        if (changed) {
+            m.redraw();
+        }
+    },
+
+    scrollHandler: function() {
+        if (!ImageGrid.checkImagesInViewPending) {
+            ImageGrid.checkImagesInViewPending = true;
+            setTimeout(ImageGrid.checkImagesInView, 400);
+        }
+    },
+
+    deleteSelected: function() {
+        // Are we currently viewing the trash directory?
+        var isTrash = Bucket.currentId == "trash";
+            if (isTrash) {
+            var r = confirm("Permanently delete the selected items?");
+            if (r != true) {
+                return;
+            }
+        }
+
+        var promises = [];
+        for (var i = 0; i < ImageGrid.selectedImageIDs.length; i++) {
+            promises.push(Image.delete(ImageGrid.selectedImageIDs[i], isTrash));
+        }
+
+        Promise.all(promises).then(function() {
+            Image.loadList(Bucket.currentId);
+            ImageGrid.selectedImageIDs = [];
+       });
+    },
+
+    restoreSelectedFromTrash: function() {
+        var promises = [];
+        for (var i = 0; i < ImageGrid.selectedImageIDs.length; i++) {
+            promises.push(Image.restore(ImageGrid.selectedImageIDs[i]));
+        }
+
+        Promise.all(promises)
+        .then(function(a) {
+            Image.loadList(Bucket.currentId);
+            ImageGrid.selectedImageIDs = [];
+       });
+    },
+
+    viewTrash: function() {
+        ImageGrid.previouslyViewedCollection = Bucket.currentId;
+        Image.list = [];
+        Bucket.currentId = "trash";
+        Image.loadList(Bucket.currentId);
+    },
+
+    returnToPreviouslyViewedCollection: function() {
+        Bucket.currentId = ImageGrid.previouslyViewedCollection;
+        Image.loadList(Bucket.currentId);
     }
+
 }

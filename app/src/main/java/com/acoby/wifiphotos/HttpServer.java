@@ -6,6 +6,7 @@ import android.content.res.AssetManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Environment;
+import android.os.Process;
 import android.provider.MediaStore;
 import android.util.Log;
 
@@ -51,6 +52,8 @@ public class HttpServer extends NanoHTTPD {
     Response apiNotFoundResponse;
     Response htmlNotFoundResponse;
 
+    boolean threadPrioritySet = false;
+
     public HttpServer(AppCompatActivity activity) {
         super(8080);
         this.activity = activity;
@@ -62,6 +65,10 @@ public class HttpServer extends NanoHTTPD {
 
     @Override
     public Response serve(IHTTPSession session) {
+        if (!threadPrioritySet) {
+            android.os.Process.setThreadPriority(Process.THREAD_PRIORITY_FOREGROUND);
+        }
+
         try {
             String uri = session.getUri();
             Log.v(MainActivity.LOGTAG, "Got " + session.getMethod() + " request with URI " + uri);
@@ -164,7 +171,7 @@ public class HttpServer extends NanoHTTPD {
              */
             if (session.getMethod() == Method.GET) {
                 boolean full = false;
-                int size = 500;
+                int size = 600;
                 Map<String, List<String>> parameters = session.getParameters();
                 if (parameters.containsKey("size")) {
                     String s = parameters.get("size").get(0);
@@ -172,13 +179,6 @@ public class HttpServer extends NanoHTTPD {
                         full = true;
                     } else {
                         size = Integer.parseInt(s);
-                    }
-                }
-
-                int quality = ImageResizer.QUALITY_HIGH;
-                if (parameters.containsKey("quality")) {
-                    if (parameters.get("quality").get(0).equals("low")) {
-                        quality = ImageResizer.QUALITY_LOW;
                     }
                 }
 
@@ -195,7 +195,7 @@ public class HttpServer extends NanoHTTPD {
                         return this.newChunkedResponse(Response.Status.OK, "image/jpeg", in);
                     }
 
-                    File resizedImageFile = imageResizer.getResizedImageFile(imageID, isTrash, size, quality);
+                    File resizedImageFile = imageResizer.getResizedImageFile(imageID, isTrash, size);
                     FileInputStream f = new FileInputStream(resizedImageFile);
                     return this.newChunkedResponse(Response.Status.OK, "image/jpeg", f);
                 } catch (IOException e) {

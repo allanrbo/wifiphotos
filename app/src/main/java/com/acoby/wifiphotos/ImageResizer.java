@@ -3,8 +3,6 @@ package com.acoby.wifiphotos;
 import android.content.ContentUris;
 import android.database.Cursor;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Matrix;
 import android.net.Uri;
 import android.provider.MediaStore;
 import android.renderscript.Allocation;
@@ -13,7 +11,6 @@ import android.renderscript.ScriptIntrinsicBlur;
 import android.renderscript.ScriptIntrinsicResize;
 import android.renderscript.Type;
 import android.util.Log;
-import android.util.Size;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -24,6 +21,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -53,42 +52,10 @@ public class ImageResizer {
         }
     }
 
-    public File getResizedImageFile(long imageID, boolean isTrash, int size, int quality) throws IOException {
-        long before = System.currentTimeMillis();
-
-        // Get source image dimensions.
-        BitmapFactory.Options options = new BitmapFactory.Options();
-        options.inJustDecodeBounds = true;
-        InputStream in = this.openOrigImage(imageID, isTrash);
-        BitmapFactory.decodeStream(in, null, options);
-        in.close();
-        int srcWidth = options.outWidth;
-        int srcHeight = options.outHeight;
-
-        // Calculate new dimensions.
-        int dstWidth;
-        int dstHeight;
-        if (srcWidth > srcHeight) {
-            if (srcWidth > size) {
-                dstWidth = size;
-                dstHeight = (srcHeight * size) / srcWidth;
-            } else {
-                dstWidth = srcWidth;
-                dstHeight = srcHeight;
-            }
-        } else {
-            if (srcHeight > size) {
-                dstWidth = (srcWidth * size) / srcHeight;
-                dstHeight = size;
-            } else {
-                dstWidth = srcWidth;
-                dstHeight = srcHeight;
-            }
-        }
-
+    public File getResizedImageFile(long imageID, boolean isTrash, int size) throws IOException {
         // Calculate cache file name
         long lastModified = this.getImageLastModified(imageID);
-        String cacheFilePath = this.generateCacheFilePath(imageID, lastModified, size, quality);
+        String cacheFilePath = this.generateCacheFilePath(imageID, lastModified, size);
         File cacheFile = new File(cacheFilePath);
 
         if (!cacheFile.exists()) {
@@ -96,17 +63,36 @@ public class ImageResizer {
             // The lock is here as a workaround for out-of-memory when testing on a OnePlus X with many images loading concurrently:
             //   java.lang.OutOfMemoryError: Failed to allocate a 51916812 byte allocation with 16769248 free bytes and 28MB until OOM
             synchronized (this) {
-                in = this.openOrigImage(imageID, isTrash);
+                for(int retries = 0; ; retries++) {
+                    try {
+                        long before = System.currentTimeMillis();
 
-                if (quality == QUALITY_LOW) {
-                    this.resizeLowQuality(in, cacheFile, srcWidth, srcHeight, dstWidth, dstHeight);
-                } else {
-                    this.resizeHighQuality(in, cacheFile, srcWidth, srcHeight, dstWidth, dstHeight);
+                        InputStream in = this.openOrigImage(imageID, isTrash);
+                        ByteBuffer jpegData = ByteBuffer.allocateDirect(in.available());
+                        Channels.newChannel(in).read(jpegData);
+
+                        this.resize(jpegData, cacheFile, size);
+
+                        Log.v(MainActivity.LOGTAG, "Resized image " + imageID + " in " + (System.currentTimeMillis() - before) + "ms");
+                        break;
+                    } catch (FileNotFoundException e) {
+                        throw e;
+                    } catch (Throwable e) { // Throwable instead of Exception to also get OutOfMemoryError
+                        Log.v(MainActivity.LOGTAG, "Got exception while resizing image " + imageID);
+                        Log.v(MainActivity.LOGTAG, Log.getStackTraceString(e));
+                        if (retries++ > 5) {
+                            throw e;
+                        }
+                        Log.v(MainActivity.LOGTAG, "Retrying");
+                        try {
+                            Thread.sleep(500);
+                        } catch(InterruptedException e2) {
+                        }
+                    }
                 }
             }
         }
 
-        Log.v(MainActivity.LOGTAG, "getResizedImageFile time taken: " + (System.currentTimeMillis() - before));
         return cacheFile;
     }
 
@@ -120,11 +106,10 @@ public class ImageResizer {
         return this.activity.getContentResolver().openInputStream(contentUri);
     }
 
-    private String generateCacheFilePath(long imageID, long imageLastModified, int size, int quality) {
+    private String generateCacheFilePath(long imageID, long imageLastModified, int size) {
         md5.update((imageID + ",").getBytes());
         md5.update((imageLastModified + ",").getBytes());
         md5.update((size + ",").getBytes());
-        md5.update((quality + ",").getBytes());
         byte[] md5digest = md5.digest();
 
         StringBuilder sb = new StringBuilder(md5digest.length * 2);
@@ -152,51 +137,33 @@ public class ImageResizer {
         return lastModified;
     }
 
-    private void resizeLowQuality(InputStream in, File cacheFile, int srcWidth, int srcHeight, int dstWidth, int dstHeight) throws IOException {
-        // Based on https://stackoverflow.com/a/4250279/40645
-
-        long before = System.currentTimeMillis();
-
-        // Calculate the correct inSampleSize/scale value. This helps reduce memory use. It should be a power of 2
-        // from: https://stackoverflow.com/questions/477572/android-strange-out-of-memory-issue/823966#823966
-        int inSampleSize = 1;
-        while (srcWidth / 2 > dstWidth) {
-            srcWidth /= 2;
-            srcHeight /= 2;
-            inSampleSize *= 2;
-        }
-
-        float desiredScale = (float) dstWidth / srcWidth;
-
-        // Decode with inSampleSize
-        BitmapFactory.Options options = new BitmapFactory.Options();
-        options.inJustDecodeBounds = false;
-        options.inDither = false;
-        options.inSampleSize = inSampleSize;
-        options.inScaled = false;
-        options.inPreferredConfig = Bitmap.Config.ARGB_8888;
-        Bitmap sampledSrcBitmap = BitmapFactory.decodeStream(in, null, options);
-        in.close();
-
-        // Resize
-        Matrix matrix = new Matrix();
-        matrix.postScale(desiredScale, desiredScale);
-        Bitmap scaledBitmap = Bitmap.createBitmap(sampledSrcBitmap, 0, 0, srcWidth, srcHeight, matrix, true);
-        if (!sampledSrcBitmap.isRecycled()) {
-            sampledSrcBitmap.recycle();
-        }
-
-        // Save
-        OutputStream out = new RemoveFFE2OutputStreamDecorator(new FileOutputStream(cacheFile));
-        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 50, out);
-        if (!scaledBitmap.isRecycled()) {
-            scaledBitmap.recycle();
-        }
-        out.close();
-    }
-
-    private void resizeHighQuality(InputStream in, File cacheFile, int srcWidth, int srcHeight, int dstWidth, int dstHeight) throws IOException {
+    private void resize(ByteBuffer in, File cacheFile, int size) throws IOException {
         // Based on https://medium.com/@petrakeas/alias-free-resize-with-renderscript-5bf15a86ce3
+
+        Bitmap src = LibjpegTurbo.decompress(in);
+
+        // Calculate new dimensions.
+        int srcWidth = src.getWidth();
+        int srcHeight = src.getHeight();
+        int dstWidth;
+        int dstHeight;
+        if (srcWidth > srcHeight) {
+            if (srcWidth > size) {
+                dstWidth = size;
+                dstHeight = (srcHeight * size) / srcWidth;
+            } else {
+                dstWidth = srcWidth;
+                dstHeight = srcHeight;
+            }
+        } else {
+            if (srcHeight > size) {
+                dstWidth = (srcWidth * size) / srcHeight;
+                dstHeight = size;
+            } else {
+                dstWidth = srcWidth;
+                dstHeight = srcHeight;
+            }
+        }
 
         float resizeRatio = (float) srcWidth / dstWidth;
 
@@ -206,19 +173,13 @@ public class ImageResizer {
         float radius = 2.5f * sigma - 1.5f;
         radius = Math.min(25, Math.max(0.0001f, radius));
 
-        Bitmap src = BitmapFactory.decodeStream(in);
-        in.close();
-        Bitmap.Config bitmapConfig = src.getConfig();
-
         // Gaussian filter
         Allocation tmpIn = Allocation.createFromBitmap(this.renderScript, src);
         Allocation tmpFiltered = Allocation.createTyped(this.renderScript, tmpIn.getType());
         ScriptIntrinsicBlur blurIntrinsic = ScriptIntrinsicBlur.create(this.renderScript, tmpIn.getElement());
-
         blurIntrinsic.setRadius(radius);
         blurIntrinsic.setInput(tmpIn);
         blurIntrinsic.forEach(tmpFiltered);
-
         if (!src.isRecycled()) {
             src.recycle();
         }
@@ -226,65 +187,26 @@ public class ImageResizer {
         blurIntrinsic.destroy();
 
         // Resize
-        Bitmap dst = Bitmap.createBitmap(dstWidth, dstHeight, bitmapConfig);
         Type t = Type.createXY(this.renderScript, tmpFiltered.getElement(), dstWidth, dstHeight);
         Allocation tmpOut = Allocation.createTyped(this.renderScript, t);
         ScriptIntrinsicResize resizeIntrinsic = ScriptIntrinsicResize.create(this.renderScript);
-
         resizeIntrinsic.setInput(tmpFiltered);
         resizeIntrinsic.forEach_bicubic(tmpOut);
+        Bitmap dst = Bitmap.createBitmap(dstWidth, dstHeight, Bitmap.Config.ARGB_8888);
         tmpOut.copyTo(dst);
 
         tmpFiltered.destroy();
         tmpOut.destroy();
         resizeIntrinsic.destroy();
 
-        OutputStream out = new RemoveFFE2OutputStreamDecorator(new FileOutputStream(cacheFile));
-        dst.compress(Bitmap.CompressFormat.JPEG, 80, out);
+        ByteBuffer outBuffer = LibjpegTurbo.compress(dst, dstWidth, dstHeight);
+
+        OutputStream out = new FileOutputStream(cacheFile);
+        Channels.newChannel(out).write(outBuffer);
+        out.close();
+
         if (!dst.isRecycled()) {
             dst.recycle();
-        }
-        out.close();
-    }
-
-    // Some image viewer applications (such as Windows Photo Viewer) doesn't seem to like the ICC profile meta data that Android's Bitmap.compress writes.
-    // This decorator removes the section.
-    private static class RemoveFFE2OutputStreamDecorator extends OutputStream {
-        OutputStream underlyingStream;
-        boolean marker = false;
-        boolean skipSegment = false;
-
-        public RemoveFFE2OutputStreamDecorator(OutputStream underlyingStream) {
-            this.underlyingStream = underlyingStream;
-        }
-
-        @Override
-        public void write(int b) throws IOException {
-            // Based on https://en.wikipedia.org/wiki/JPEG#Syntax_and_structure
-            if (this.marker) {
-                this.marker = false;
-                if ((b & 0xFF) == 0xE2) { // The 0xFF,0xE2 segment that Android writes seems to cause trouble with Windows Photo Viewer.
-                    this.skipSegment = true;
-                } else {
-                    this.skipSegment = false;
-                    this.underlyingStream.write(0xFF);
-                    this.underlyingStream.write(b);
-                }
-            } else if ((b & 0xFF) == 0xFF) {
-                this.marker = true;
-            } else if (!this.skipSegment) {
-                this.underlyingStream.write(b);
-            }
-        }
-
-        @Override
-        public void flush() throws IOException {
-            this.underlyingStream.flush();
-        }
-
-        @Override
-        public void close() throws IOException {
-            this.underlyingStream.close();
         }
     }
 }
