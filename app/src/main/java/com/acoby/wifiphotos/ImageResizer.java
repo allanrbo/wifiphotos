@@ -1,9 +1,7 @@
 package com.acoby.wifiphotos;
 
-import android.content.ContentUris;
 import android.database.Cursor;
 import android.graphics.Bitmap;
-import android.net.Uri;
 import android.provider.MediaStore;
 import android.renderscript.Allocation;
 import android.renderscript.RenderScript;
@@ -23,74 +21,86 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class ImageResizer {
-    AppCompatActivity activity;
     RenderScript renderScript;
-    MessageDigest md5;
+    AppCompatActivity activity;
     File cacheDir;
 
-    public static final int QUALITY_HIGH = 1;
-    public static final int QUALITY_LOW = 2;
+    Semaphore semaphore;
+    AtomicInteger concurrentCount = new AtomicInteger(0);
 
     public ImageResizer(AppCompatActivity activity) {
         this.activity = activity;
-        this.renderScript = RenderScript.create(this.activity);
 
-        try {
-            this.md5 = MessageDigest.getInstance("MD5");
-        } catch (NoSuchAlgorithmException e) {
-            // This should never happen, as MD5 is hardcoded in the above.
-            throw new RuntimeException(e);
-        }
+        this.renderScript = RenderScript.create(this.activity);
 
         this.cacheDir = this.activity.getExternalCacheDir();
         if (this.cacheDir == null) {
             this.cacheDir = this.activity.getCacheDir();
         }
+
+        int maxConcurrency = 1; //Runtime.getRuntime().availableProcessors();
+        this.semaphore = new Semaphore(maxConcurrency, true);
+        Log.v(MainActivity.TAG, "Initial max concurrency when resizing images: " + maxConcurrency);
     }
 
     public File getResizedImageFile(long imageID, boolean isTrash, int size) throws IOException {
         // Calculate cache file name
         long lastModified = this.getImageLastModified(imageID);
-        String cacheFilePath = this.generateCacheFilePath(imageID, lastModified, size);
+        String cacheFilePath = this.cacheDir + "/" + imageID + "," + lastModified + "," + size;
         File cacheFile = new File(cacheFilePath);
 
         if (!cacheFile.exists()) {
-            // TODO avoid this locking.
-            // The lock is here as a workaround for out-of-memory when testing on a OnePlus X with many images loading concurrently:
-            //   java.lang.OutOfMemoryError: Failed to allocate a 51916812 byte allocation with 16769248 free bytes and 28MB until OOM
-            synchronized (this) {
-                for(int retries = 0; ; retries++) {
-                    try {
-                        long before = System.currentTimeMillis();
+            // Limit how many images can concurrently be resizing, in order to not hit OutOfMemoryError.
+            if (!this.semaphore.tryAcquire()) {
+                Log.v(MainActivity.TAG, "Currently resizing " + this.concurrentCount.get() + " images. Waiting to acquire semaphore to resize image " + imageID);
+                this.semaphore.acquireUninterruptibly();
+            }
+            this.concurrentCount.incrementAndGet();
 
-                        InputStream in = this.openOrigImage(imageID, isTrash);
-                        ByteBuffer jpegData = ByteBuffer.allocateDirect(in.available());
-                        Channels.newChannel(in).read(jpegData);
+            // Retry-loop for in case we hit OutOfMemoryError or other transient problems while resizing.
+            for(int retries = 0; ; retries++) {
+                try {
+                    long before = System.currentTimeMillis();
+                    InputStream in = this.openOrigImage(imageID, isTrash);
+                    ByteBuffer jpegData = ByteBuffer.allocateDirect(in.available());
+                    Channels.newChannel(in).read(jpegData);
+                    in.close();
+                    this.resize(jpegData, cacheFile, size);
+                    Log.v(MainActivity.TAG, "Resized image " + imageID + " in " + (System.currentTimeMillis() - before) + "ms");
+                    break;
+                } catch (FileNotFoundException e) {
+                    throw e;
+                } catch (OutOfMemoryError e) { // Throwable instead of Exception to also get OutOfMemoryError
+                    Log.v(MainActivity.TAG, "OutOfMemoryError on thread " + Thread.currentThread().getId() + " while resizing " + this.concurrentCount.get()  + " images concurrently. Attempting to lower concurrency and retry.");
 
-                        this.resize(jpegData, cacheFile, size);
-
-                        Log.v(MainActivity.TAG, "Resized image " + imageID + " in " + (System.currentTimeMillis() - before) + "ms");
-                        break;
-                    } catch (FileNotFoundException e) {
+                    // Lower the max concurrency to one less than the current number, unless this is the only current thread.
+                    this.semaphore.drainPermits();
+                    if (this.concurrentCount.get() > 1) {
+                        this.semaphore.acquireUninterruptibly();
+                        Log.v(MainActivity.TAG, "OutOfMemoryError follow up: Acquired another semaphore on thread " + Thread.currentThread().getId() + ", which will lower concurrency by 1 going forward.");
+                    } else {
+                        Log.v(MainActivity.TAG, "OutOfMemoryError follow up: Thread " + Thread.currentThread().getId() + " was the only thread that was resizing. Ensured concurrency is max 1 going forward.");
+                    }
+                } catch (Exception e) {
+                    Log.v(MainActivity.TAG, "Got exception while resizing image " + imageID);
+                    Log.v(MainActivity.TAG, Log.getStackTraceString(e));
+                    if (retries++ > 5) {
                         throw e;
-                    } catch (Throwable e) { // Throwable instead of Exception to also get OutOfMemoryError
-                        Log.v(MainActivity.TAG, "Got exception while resizing image " + imageID);
-                        Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-                        if (retries++ > 5) {
-                            throw e;
-                        }
-                        Log.v(MainActivity.TAG, "Retrying");
-                        try {
-                            Thread.sleep(500);
-                        } catch(InterruptedException e2) {
-                        }
+                    }
+                    Log.v(MainActivity.TAG, "Retrying");
+                    try {
+                        Thread.sleep(500);
+                    } catch(InterruptedException e2) {
                     }
                 }
             }
+
+            this.concurrentCount.decrementAndGet();
+            this.semaphore.release();
         }
 
         return cacheFile;
@@ -102,23 +112,25 @@ public class ImageResizer {
             return new FileInputStream(dir + "/" + imageID + ".jpeg");
         }
 
-        Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageID);
-        return this.activity.getContentResolver().openInputStream(contentUri);
-    }
+        // Initially tried to use the more correct getContentResolver().openInputStream(contentUri) here, but it sometimes hangs for takes several seconds.
 
-    private String generateCacheFilePath(long imageID, long imageLastModified, int size) {
-        md5.update((imageID + ",").getBytes());
-        md5.update((imageLastModified + ",").getBytes());
-        md5.update((size + ",").getBytes());
-        byte[] md5digest = md5.digest();
-
-        StringBuilder sb = new StringBuilder(md5digest.length * 2);
-        for (byte b : md5digest) {
-            sb.append(String.format("%02x", b));
+        // Query the Android MediaStore API.
+        String[] projection = new String[]{MediaStore.Images.Media._ID, MediaStore.Images.Media.DATA};
+        String selection = MediaStore.Images.Media._ID + " == ?";
+        String[] selectionArgs = {imageID + ""};
+        String sortOrder = MediaStore.Images.Media.DATE_TAKEN + " DESC";
+        Cursor cur = this.activity.getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, sortOrder);
+        String fileName = null;
+        if (cur.moveToFirst()) {
+            fileName = cur.getString(cur.getColumnIndexOrThrow(MediaStore.Images.Media.DATA));
         }
-        String hash = sb.toString();
+        cur.close();
 
-        return this.cacheDir + "/" + hash;
+        if (fileName == null) {
+            throw new FileNotFoundException();
+        }
+
+        return new FileInputStream(fileName);
     }
 
     private long getImageLastModified(long imageID) {
@@ -130,7 +142,7 @@ public class ImageResizer {
         Cursor cur = this.activity.getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, sortOrder);
 
         long lastModified = 0;
-        if (cur.moveToNext()) {
+        if (cur.moveToFirst()) {
             lastModified = cur.getLong(cur.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_MODIFIED));
         }
         cur.close();
@@ -138,8 +150,6 @@ public class ImageResizer {
     }
 
     private void resize(ByteBuffer in, File cacheFile, int size) throws IOException {
-        // Based on https://medium.com/@petrakeas/alias-free-resize-with-renderscript-5bf15a86ce3
-
         Bitmap src = LibjpegTurbo.decompress(in);
 
         // Calculate new dimensions.
@@ -165,39 +175,7 @@ public class ImageResizer {
             }
         }
 
-        float resizeRatio = (float) srcWidth / dstWidth;
-
-        // Calculate gaussian's radius
-        // https://android.googlesource.com/platform/frameworks/rs/+/master/cpu_ref/rsCpuIntrinsicBlur.cpp
-        float sigma = resizeRatio / (float) Math.PI;
-        float radius = 2.5f * sigma - 1.5f;
-        radius = Math.min(25, Math.max(0.0001f, radius));
-
-        // Gaussian filter
-        Allocation tmpIn = Allocation.createFromBitmap(this.renderScript, src);
-        Allocation tmpFiltered = Allocation.createTyped(this.renderScript, tmpIn.getType());
-        ScriptIntrinsicBlur blurIntrinsic = ScriptIntrinsicBlur.create(this.renderScript, tmpIn.getElement());
-        blurIntrinsic.setRadius(radius);
-        blurIntrinsic.setInput(tmpIn);
-        blurIntrinsic.forEach(tmpFiltered);
-        if (!src.isRecycled()) {
-            src.recycle();
-        }
-        tmpIn.destroy();
-        blurIntrinsic.destroy();
-
-        // Resize
-        Type t = Type.createXY(this.renderScript, tmpFiltered.getElement(), dstWidth, dstHeight);
-        Allocation tmpOut = Allocation.createTyped(this.renderScript, t);
-        ScriptIntrinsicResize resizeIntrinsic = ScriptIntrinsicResize.create(this.renderScript);
-        resizeIntrinsic.setInput(tmpFiltered);
-        resizeIntrinsic.forEach_bicubic(tmpOut);
-        Bitmap dst = Bitmap.createBitmap(dstWidth, dstHeight, Bitmap.Config.ARGB_8888);
-        tmpOut.copyTo(dst);
-
-        tmpFiltered.destroy();
-        tmpOut.destroy();
-        resizeIntrinsic.destroy();
+        Bitmap dst = resizeBitmap2(this.renderScript, src, dstWidth);
 
         ByteBuffer outBuffer = LibjpegTurbo.compress(dst, dstWidth, dstHeight);
 
@@ -208,5 +186,50 @@ public class ImageResizer {
         if (!dst.isRecycled()) {
             dst.recycle();
         }
+    }
+
+    // Renderscript use is based on https://medium.com/@petrakeas/alias-free-resize-with-renderscript-5bf15a86ce3
+    private static Bitmap resizeBitmap2(RenderScript rs, Bitmap src, int dstWidth) {
+        Bitmap.Config  bitmapConfig = src.getConfig();
+        int srcWidth = src.getWidth();
+        int srcHeight = src.getHeight();
+        float srcAspectRatio = (float) srcWidth / srcHeight;
+        int dstHeight = (int) (dstWidth / srcAspectRatio);
+
+        float resizeRatio = (float) srcWidth / dstWidth;
+
+        // Calculate gaussian's radius
+        float sigma = resizeRatio / (float) Math.PI;
+        // https://android.googlesource.com/platform/frameworks/rs/+/master/cpu_ref/rsCpuIntrinsicBlur.cpp
+        float radius = 2.5f * sigma - 1.5f;
+        radius = Math.min(25, Math.max(0.0001f, radius));
+
+        // Gaussian filter
+        Allocation tmpIn = Allocation.createFromBitmap(rs, src, Allocation.MipmapControl.MIPMAP_NONE, Allocation.USAGE_SHARED);
+        Allocation tmpFiltered = Allocation.createTyped(rs, tmpIn.getType());
+        ScriptIntrinsicBlur blurInstrinsic = ScriptIntrinsicBlur.create(rs, tmpIn.getElement());
+
+        blurInstrinsic.setRadius(radius);
+        blurInstrinsic.setInput(tmpIn);
+        blurInstrinsic.forEach(tmpFiltered);
+
+        tmpIn.destroy();
+        blurInstrinsic.destroy();
+
+        // Resize
+        Bitmap dst = Bitmap.createBitmap(dstWidth, dstHeight, bitmapConfig);
+        Type t = Type.createXY(rs, tmpFiltered.getElement(), dstWidth, dstHeight);
+        Allocation tmpOut = Allocation.createTyped(rs, t);
+        ScriptIntrinsicResize resizeIntrinsic = ScriptIntrinsicResize.create(rs);
+
+        resizeIntrinsic.setInput(tmpFiltered);
+        resizeIntrinsic.forEach_bicubic(tmpOut);
+        tmpOut.copyTo(dst);
+
+        tmpFiltered.destroy();
+        tmpOut.destroy();
+        resizeIntrinsic.destroy();
+
+        return dst;
     }
 }
