@@ -61,7 +61,13 @@ var ImageGrid = {
 
             imgBoxPositions.push(imgBoxPos);
 
+            // If an image box is more than halfway on the screen, we'll mark it as visible.
             var bottom = imgBoxPos.top + imgSize;
+            if (scrollTop - imgSize * 0.5 <= imgBoxPos.top && bottom <= scrollBottom + imgSize * 0.5) {
+                imgBoxPos.visible = true;
+            }
+
+            // If an image box is within a short distance from the visible screen, we'll draw the image box.
             if (scrollTop - imgSize * 2 <= imgBoxPos.top && bottom <= scrollBottom + imgSize * 2) {
                 imgBoxPositionsToDraw.push(imgBoxPos);
             }
@@ -94,7 +100,7 @@ var ImageGrid = {
                     return false;
                 },
                 onupdate: function(vnode) {
-                    // The virtual DOM causes problems with img elements being reused, causing a flash of the wrong image until the new image loads.
+                    // The virtual DOM caused problems with img elements being reused, causing a flash of the wrong image until the new image loads.
                     // Similar issue with flickering when image div's are removed from the front.
                     // For example the element that used to be <img src="5"> may now be <img src="10">, even though <img src="10"> maintains its absolute position.
                     // Therefore manually controlling the DOM inside the #images div.
@@ -168,10 +174,6 @@ var ImageGrid = {
                             m.redraw();
                         };
 
-                        img = document.createElement("img");
-                        img.src = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "?size=" + ImageGrid.imageSize;
-                        imgDiv.appendChild(img);
-
                         var imglabel = document.createElement("div");
                         imglabel.className = "imglabel";
                         imglabel.innerText = imgBoxPos.image.name;
@@ -198,6 +200,86 @@ var ImageGrid = {
                         }
                     }
 
+                    // Add img elements progressively, and not all at once.
+                    // This is because in case the user scrolls away, we don't want a lot of wasted HTTP requests being already enqueued.
+                    var loadNextImgs = function() {
+                        var maxConcurrent = 8;
+
+                        // Get how many image are currently in progress of being loaded.
+                        var currentLoadingCount = 0;
+                        for (var i = 0; i < vnode.dom.children.length; i++) {
+                            var imgDiv = vnode.dom.children[i];
+                            for (var j = 0; j < imgDiv.children.length; j++) {
+                                if (imgDiv.children[j].tagName == "IMG" && !imgDiv.children[j].complete) {
+                                    currentLoadingCount++;
+                                    break;
+                                }
+                            }
+                        }
+
+                        var drawImgIfNeeded = function(imgDiv) {
+                            var imageId = imgDiv.dataset.imageId;
+                            var alreadyHasImg = false;
+                            for (var j = 0; j < imgDiv.children.length; j++) {
+                                if (imgDiv.children[j].tagName == "IMG") {
+                                    alreadyHasImg = true;
+                                    break;
+                                }
+                            }
+
+                            if (alreadyHasImg) {
+                                return;
+                            }
+
+                            img = document.createElement("img");
+                            img.src = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "?size=" + ImageGrid.imageSize;
+                            imgDiv.appendChild(img);
+                            if (img.complete) {
+                                return;
+                            } else {
+                                currentLoadingCount++;
+                                img.addEventListener('load', function() {
+                                    loadNextImgs();
+                                });
+                                img.addEventListener('error', function() {
+                                    loadNextImgs();
+                                });
+                            }
+                        }
+
+                        // Prioritize first to draw img elements in boxes that are currently visible.
+                        for (var i = 0; i < vnode.dom.children.length; i++) {
+                            if (currentLoadingCount >= maxConcurrent) {
+                                return;
+                            }
+
+                            var imgDiv = vnode.dom.children[i];
+
+                            var visible = false;
+                            for (var j = 0; j < imgBoxPositionsToDraw.length; j++) {
+                                var imgBoxPos = imgBoxPositionsToDraw[j];
+                                if (imgDiv.dataset.imageId == imgBoxPos.image.imageId && imgBoxPos.visible) {
+                                    visible = true;
+                                    break;
+                                }
+                            }
+
+                            if (visible) {
+                                drawImgIfNeeded(vnode.dom.children[i]);
+                            }
+                        }
+
+                        // If all the visible img elements are already loading and we haven't met the maxConcurrent limit, then draw some off screen images.
+                        for (var i = 0; i < vnode.dom.children.length; i++) {
+                            if (currentLoadingCount >= maxConcurrent) {
+                                return;
+                            }
+
+                            drawImgIfNeeded(vnode.dom.children[i]);
+                        }
+
+                    }
+                    loadNextImgs();
                 }
             }),
 
