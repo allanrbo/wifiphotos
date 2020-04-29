@@ -1,10 +1,10 @@
 body {
-    margin: 0;
-    padding: 0;
     background-color: #2c2b2b;
     color: #C5C5C5;
     font-family: sans-serif;
+    overflow-y: scroll;
 }
+
 
 a {
     color: #B7B297;
@@ -53,30 +53,18 @@ select {
     100% { transform: rotate(360deg); }
 }
 
-#images {
-    display: flex;
-    flex-wrap: wrap;
-    flex-direction: row;
-    justify-content: center;
-    align-items: center;
-    align-content: center;
-}
-
 .image {
-    margin: 0.3em;
-    border: 1px solid #3c3a2e;
     color: #5c5c5c;
-    background-color: #686868;
-    position: relative;
-    display: inline-block;
-    padding: 0.5em;
+    background-color: #e8e8e8;
+    position: absolute;
+    padding: 8px;
     overflow: hidden;
     transition: background-color 0.1s ease-out, color 0.1s ease-out;
 }
 
 .image.selected {
-    color: #C5C5C5;
-    background-color: #e8e8e8;
+    color: #2c2b2b;
+    background-color: #B7B297;
     transition: background-color 0.1s ease-in, color 0.1s ease-in;
 }
 
@@ -85,16 +73,26 @@ select {
     top: 50%;
     left: 50%;
     transform: translate(-50%,-50%);
+    /*
     max-height: 100%;
     max-width: 100%;
     transition: max-height 0.1s ease-out, max-width 0.1s ease-out;
+    */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
+/*
 .image.selected img {
     max-height: 80%;
     max-width: 80%;
     transition: max-height 0.1s ease-in, max-width 0.1s ease-in;
 }
+*/
 
 .image .imglabel {
     position: absolute;
@@ -117,10 +115,6 @@ select {
 
 .topbar #collection {
     width: 20em;
-}
-
-.topbarspacer {
-    height: 2em;
 }
 
 .topbar .control {

@@ -1,6 +1,6 @@
 var ImageGrid = {
 
-    checkImagesInViewPending: false,
+    scrollHandlerPending: false,
     imageSize: 600,
     selectedImageIDs: [],
     previouslyViewedCollection: 0,
@@ -33,76 +33,171 @@ var ImageGrid = {
 
         var isTrash = Bucket.currentId == "trash";
 
-        var clearImgSrcs = function() {
-            // Clear all src attributes of images. This is to
-            // ensure no images with their old resolution are
-            // still present while the images in the new
-            // resolution are being downloaded.
-            var images = document.getElementById("images");
-            for (var i = 0; i < images.children.length; i++) {
-                for (var j = 0; j < images.children[i].children.length; j++) {
-                    images.children[i].children[j].src = "";
-                }
-            }
-        };
+        var docWidth = document.body.clientWidth;
 
-        var images = Image.list.slice(ImageGrid.imagesBoxesToRenderStart, ImageGrid.imagesBoxesToRenderEnd);
+        var scrollTop = document.documentElement.scrollTop;
+        var scrollBottom = scrollTop + window.innerHeight;
+
+        var imgSize = parseInt(ImageGrid.imageSize);
+        var imgBoxSize = 3 + 8 + imgSize + 8 + 3; // margin + padding + image + padding + margin
+
+        var columns = Math.floor(docWidth / imgBoxSize);
+
+        var marginTop = 37;
+        var marginLeft = (docWidth - imgBoxSize * columns) / 2;
+        var curCol = 0;
+        var curRow = 0;
+        var imgBoxPositions = [];
+        var imgBoxPositionsToDraw = [];
+        for (var i = 0; i < Image.list.length; i++) {
+
+            var imgBoxPos = {
+                image: Image.list[i],
+                left: curCol*imgBoxSize + marginLeft,
+                top: curRow*imgBoxSize + marginTop,
+            };
+
+            imgBoxPositions.push(imgBoxPos);
+
+            var bottom = imgBoxPos.top + imgSize;
+            if (scrollTop - imgSize * 2 <= imgBoxPos.top && bottom <= scrollBottom + imgSize * 2) {
+                imgBoxPositionsToDraw.push(imgBoxPos);
+            }
+
+            curCol++;
+            if (curCol >= columns) {
+                curRow++;
+                curCol = 0;
+            }
+
+        }
+
+        var pageLength = 0;
+        if (imgBoxPositions.length > 0) {
+            pageLength = imgBoxPositions[imgBoxPositions.length-1].top + imgSize;
+        }
 
         return [
-            m(".topbarspacer"),
-
             /*
              * Main image grid.
              */
             m("#images", {
+                style: "height:" + pageLength + "px;",
                 onclick: function(e) {
                     if (e.target.id == "images") {
                         ImageGrid.selectedImageIDs = [];
                     }
                 },
-                onupdate: function() {
-                    ImageGrid.scrollHandler();
-                }},
-                images.map(function(image) {
-                    var selected = "";
-                    for (var i = 0; i < ImageGrid.selectedImageIDs.length; i++) {
-                        if (ImageGrid.selectedImageIDs[i] == image.imageId) {
-                            selected = ".selected";
+                onselect: function() {
+                    return false;
+                },
+                onupdate: function(vnode) {
+                    // The virtual DOM causes problems with img elements being reused, causing a flash of the wrong image until the new image loads.
+                    // Similar issue with flickering when image div's are removed from the front.
+                    // For example the element that used to be <img src="5"> may now be <img src="10">, even though <img src="10"> maintains its absolute position.
+                    // Therefore manually controlling the DOM inside the #images div.
+
+                    // Pre-compute the intended CSS for this image box.
+                    for (var i = 0; i < imgBoxPositionsToDraw.length; i++) {
+                        var imgBoxPos = imgBoxPositionsToDraw[i];
+                        imgBoxPos.style = ("width:" + imgSize + "px;"
+                            + "height:" + imgSize + "px;"
+                            + "top:" + imgBoxPos.top + "px;"
+                            + "left:" + imgBoxPos.left + "px;");
+                    }
+
+                    // Remove image box DOM elements that should no longer be drawn.
+                    for (var i = 0; i < vnode.dom.children.length; i++) {
+                        var imgDiv = vnode.dom.children[i];
+
+                        var found = false;
+                        for (var j = 0; j < imgBoxPositionsToDraw.length; j++) {
+                            var imgBoxPos = imgBoxPositionsToDraw[j];
+                            if (imgDiv.dataset.imageId == imgBoxPos.image.imageId && imgDiv.dataset.style == imgBoxPos.style) {
+                                found = true;
+                                break;
+                            }
+                        }
+
+                        if (!found) {
+                            vnode.dom.removeChild(imgDiv);
+                            i--;
                         }
                     }
 
-                    var selectImage = null;
-                    if (image.visible) {
-                        selectImage = function(e) {
+                    // Draw new image box DOM elements.
+                    for (var i = 0; i < imgBoxPositionsToDraw.length; i++) {
+                        var imgBoxPos = imgBoxPositionsToDraw[i];
+                        var imageId = imgBoxPos.image.imageId;
+
+                        // Does this image box already exist in the DOM?
+                        var found = false;
+                        for (var j = 0; j < vnode.dom.children.length; j++) {
+                            var imgDiv = vnode.dom.children[j];
+                            if (imgDiv.dataset.imageId == imageId && imgDiv.dataset.style == imgBoxPos.style) {
+                                found = true;
+                                prevDomElem = imgDiv;
+                                break;
+                            }
+                        }
+                        if (found) {
+                            continue;
+                        }
+
+                        var imgDiv = document.createElement("div");
+                        imgDiv.className = "image";
+                        imgDiv.dataset.imageId = imageId;
+                        imgDiv.dataset.style = imgBoxPos.style;
+                        imgDiv.style = imgBoxPos.style;
+                        imgDiv.onmousedown = function() {
+                            var imageId = this.dataset.imageId;
                             var alreadySelected = false;
-                            for (var i = 0; i < ImageGrid.selectedImageIDs.length; i++) {
-                                if (ImageGrid.selectedImageIDs[i] == image.imageId) {
+                            for (var j = 0; j < ImageGrid.selectedImageIDs.length; j++) {
+                                if (ImageGrid.selectedImageIDs[j] == imageId) {
                                     alreadySelected = true;
-                                    ImageGrid.selectedImageIDs.splice(i, 1);
+                                    ImageGrid.selectedImageIDs.splice(j, 1);
                                     break;
                                 }
                             }
 
                             if (!alreadySelected) {
-                                ImageGrid.selectedImageIDs.push(image.imageId);
+                                ImageGrid.selectedImageIDs.push(imageId);
                             }
+                            m.redraw();
                         };
+
+                        img = document.createElement("img");
+                        img.src = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "?size=" + ImageGrid.imageSize;
+                        imgDiv.appendChild(img);
+
+                        var imglabel = document.createElement("div");
+                        imglabel.className = "imglabel";
+                        imglabel.innerText = imgBoxPos.image.name;
+                        imgDiv.appendChild(imglabel);
+
+                        vnode.dom.appendChild(imgDiv);
                     }
 
-                    return m("div.image" + selected, {
-                        "id": "img" + image.imageId,
-                        "data-id": image.imageId,
-                        style: "width: " + ImageGrid.imageSize + "px; " + "height: " + ImageGrid.imageSize + "px;",
-                        onmousedown: selectImage
-                    }, [
-                        // Actual <img>.
-                        image.visible ? [
-                            m("img", {src: apiUrl + "/images/" + (isTrash ? "trash/" : "") + image.imageId + "?size=" + ImageGrid.imageSize}),
-                        ] : "",
-                        m(".imglabel", image.name)
-                    ]);
-                })
-            ),
+                    // Update the "selected"-class on image boxes.
+                    for (var i = 0; i < vnode.dom.children.length; i++) {
+                        var imgDiv = vnode.dom.children[i];
+                        var shouldBeSelected = false;
+                        for (var j = 0; j < ImageGrid.selectedImageIDs.length; j++) {
+                            if (ImageGrid.selectedImageIDs[j] == imgDiv.dataset.imageId) {
+                                shouldBeSelected = true;
+                                break;
+                            }
+                        }
+
+                        if (shouldBeSelected && !imgDiv.classList.contains("selected")) {
+                            imgDiv.classList.add("selected");
+                        } else if (!shouldBeSelected && imgDiv.classList.contains("selected")) {
+                            imgDiv.classList.remove("selected");
+                        }
+                    }
+
+                }
+            }),
 
             /*
              * Top bar.
@@ -116,6 +211,7 @@ var ImageGrid = {
                             onchange: function(e) {
                                 Image.list = [];
                                 Bucket.currentId = e.target.value;
+                                ImageGrid.selectedImageIDs = [];
                                 Image.loadList(Bucket.currentId);
                             },
                         },
@@ -134,7 +230,6 @@ var ImageGrid = {
                         {
                             onchange: function(e) {
                                 ImageGrid.imageSize = e.target.value;
-                                clearImgSrcs();
                                 ImageGrid.scrollHandler();
                             }
                         },
@@ -151,7 +246,7 @@ var ImageGrid = {
                     m(".control", [
                         m("span.fa.fa-trash-o", { onclick: ImageGrid.deleteSelected } ),
                         " ",
-                        m("a", { onclick: ImageGrid.deleteSelected }, "Move to trash")
+                        m("a", { onclick: ImageGrid.deleteSelected }, "Move to trash (" + ImageGrid.selectedImageIDs.length + " selected)")
                     ]),
                     m(".control", [
                         m("a", { onclick: ImageGrid.viewTrash }, "View trash")
@@ -166,7 +261,7 @@ var ImageGrid = {
                         m("span.fa.fa-times", { onclick: ImageGrid.deleteSelected }
                         ),
                         " ",
-                        m("a", { onclick: ImageGrid.deleteSelected }, "Delete permanently")
+                        m("a", { onclick: ImageGrid.deleteSelected }, "Delete permanently (" + ImageGrid.selectedImageIDs.length + " selected)")
                     ]),
                     m(".control", [
                         m("span.fa.fa-arrow-left", { onclick: ImageGrid.returnToPreviouslyViewedCollection }
@@ -182,62 +277,13 @@ var ImageGrid = {
         ];
     },
 
-    checkImagesInView: function () {
-        ImageGrid.checkImagesInViewPending = false;
-
-        var changed = false;
-
-        var scrollTop = document.documentElement.scrollTop;
-        var scrollBottom = scrollTop + window.innerHeight;
-
-        // Loop over each image div in the DOM and check if it is visible.
-        var inView = [];
-        var images = document.getElementById("images");
-        for (var i = 0; i < images.children.length; i++) {
-            var image = images.children[i];
-            var r = image.getBoundingClientRect();
-            var imageTop = r.top + document.documentElement.scrollTop;
-            var imageBottom = r.bottom + document.documentElement.scrollTop;
-
-            if (scrollTop-ImageGrid.imageSize*2 <= imageTop && imageBottom <= scrollBottom+ImageGrid.imageSize*2) {
-                inView.push(image.attributes["data-id"].value);
-            }
-        }
-
-        // Update the model Image.list to indicate which images are visible.
-        for (var i = 0; i < Image.list.length; i++) {
-            var shouldBeVisible = false;
-            for (var j = 0; j < inView.length; j++) {
-                if (Image.list[i].imageId == inView[j]) {
-                    shouldBeVisible = true;
-                    break;
-                }
-            }
-
-            if (Image.list[i].visible != shouldBeVisible) {
-                Image.list[i].visible = shouldBeVisible;
-                changed = true;
-            }
-        }
-
-        // Decide if we are scrolled down long enough for us to add more image div's.
-        var de = document.documentElement;
-        var db = document.body;
-        var docHeight = Math.max(db.scrollHeight, de.scrollHeight, db.offsetHeight, de.offsetHeight, db.clientHeight, de.clientHeight); // https://j11y.io/snippets/get-document-height-cross-browser/
-        if (scrollBottom > docHeight - window.innerHeight && Image.list.length > ImageGrid.imagesBoxesToRenderEnd) {
-            ImageGrid.imagesBoxesToRenderEnd += inView.length;
-            changed = true;
-        }
-
-        if (changed) {
-            m.redraw();
-        }
-    },
-
     scrollHandler: function() {
-        if (!ImageGrid.checkImagesInViewPending) {
-            ImageGrid.checkImagesInViewPending = true;
-            setTimeout(ImageGrid.checkImagesInView, 400);
+        if (!ImageGrid.scrollHandlerPending) {
+            ImageGrid.scrollHandlerPending = true;
+            setTimeout(function() {
+                ImageGrid.scrollHandlerPending = false;
+                m.redraw();
+            }, 400);
         }
     },
 
@@ -279,11 +325,13 @@ var ImageGrid = {
         ImageGrid.previouslyViewedCollection = Bucket.currentId;
         Image.list = [];
         Bucket.currentId = "trash";
+        ImageGrid.selectedImageIDs = [];
         Image.loadList(Bucket.currentId);
     },
 
     returnToPreviouslyViewedCollection: function() {
         Bucket.currentId = ImageGrid.previouslyViewedCollection;
+        ImageGrid.selectedImageIDs = [];
         Image.loadList(Bucket.currentId);
     }
 
