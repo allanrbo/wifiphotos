@@ -35,7 +35,7 @@ public class ImageResizer {
     Semaphore semaphore;
     AtomicInteger concurrentCount = new AtomicInteger(0);
 
-    final static long cacheMaxSize = 50*1024*1024; // 200MiB
+    final static long cacheMaxSize = 200*1024*1024; // 200MiB
 
     private DiskLruCache diskLruCache;
 
