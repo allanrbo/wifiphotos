@@ -22,6 +22,10 @@ var ImageGrid = {
             if (e.keyCode == 46) { // Delete key
                 ImageGrid.deleteSelected();
             }
+            if (e.keyCode == 27) { // Esc key
+                ImageGrid.selectedImageIDs = [];
+                m.redraw();
+            }
         }, false);
     },
 
