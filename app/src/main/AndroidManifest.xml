@@ -3,8 +3,10 @@
     package="com.acoby.wifiphotos">
 
     <!-- requestLegacyExternalStorage required in order to delete photos that this app did not create -->
+    <!-- largeHeap because we are dealing with scaling potentially many large bitmaps concurrently. Each 4032x3024 photo is 46MiB RAM, times a few copies for different phases in the resizing pipeline. -->
     <application
         android:requestLegacyExternalStorage="true"
+        android:largeHeap="true"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
