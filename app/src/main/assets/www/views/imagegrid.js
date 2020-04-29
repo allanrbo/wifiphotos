@@ -39,7 +39,9 @@ var ImageGrid = {
         var scrollBottom = scrollTop + window.innerHeight;
 
         var imgSize = parseInt(ImageGrid.imageSize);
-        var imgBoxSize = 3 + 8 + imgSize + 8 + 3; // margin + padding + image + padding + margin
+        var imgMargin = 3;
+        var imgPadding = 8;
+        var imgBoxSize = imgMargin + imgPadding + imgSize + imgPadding + imgMargin;
 
         var columns = Math.floor(docWidth / imgBoxSize);
 
@@ -74,7 +76,7 @@ var ImageGrid = {
 
         var pageLength = 0;
         if (imgBoxPositions.length > 0) {
-            pageLength = imgBoxPositions[imgBoxPositions.length-1].top + imgSize;
+            pageLength = imgBoxPositions[imgBoxPositions.length-1].top + imgBoxSize;
         }
 
         return [
