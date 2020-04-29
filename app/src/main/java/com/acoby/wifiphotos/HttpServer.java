@@ -244,7 +244,7 @@ public class HttpServer extends NanoHTTPD {
                 }
 
                 Type stringStringMap = new TypeToken<Map<String, String>>(){}.getType();
-                Map<String,Object> vals = this.gson.fromJson(body, stringStringMap);
+                Map<String,String> vals = this.gson.fromJson(body, stringStringMap);
                 if (!vals.containsKey("action") || !vals.get("action").equals("restore")) {
                     return this.apiNotFoundResponse;
                 }
@@ -420,19 +420,24 @@ public class HttpServer extends NanoHTTPD {
                 String name = "" + id;
 
                 File metaDataFile = new File(dir + "/" + f + ".json");
+                Log.v(MainActivity.TAG, metaDataFile.toString());
                 if (metaDataFile.exists()) {
+                    Log.v(MainActivity.TAG, "exists");
+
                     try {
                         Reader r = new FileReader(metaDataFile);
                         Type stringStringMap = new TypeToken<Map<String, String>>(){}.getType();
-                        Map<String,Object> vals = this.gson.fromJson(r, stringStringMap);
+                        Map<String,String> vals = this.gson.fromJson(r, stringStringMap);
                         r.close();
 
-                        name = (String) vals.get(MediaStore.Images.Media.DISPLAY_NAME);
-                        dateTaken = (long) vals.get(MediaStore.Images.Media.DATE_TAKEN);
-                        dateModified = (long) vals.get(MediaStore.Images.Media.DATE_MODIFIED);
-                        size = (long) vals.get(MediaStore.Images.Media.SIZE);
-                        id = (long) vals.get(MediaStore.Images.Media._ID);
+                        name = vals.get(MediaStore.Images.Media.DISPLAY_NAME);
+                        dateTaken =  Long.parseLong(vals.get(MediaStore.Images.Media.DATE_TAKEN)) ;
+                        dateModified = Long.parseLong(vals.get(MediaStore.Images.Media.DATE_MODIFIED));
+                        size = Long.parseLong(vals.get(MediaStore.Images.Media.SIZE));
+                        id = Long.parseLong(vals.get(MediaStore.Images.Media._ID));
                     } catch (Exception e) {
+                        Log.v(MainActivity.TAG, Log.getStackTraceString(e));
+
                         // TODO
                     }
                 }
@@ -440,6 +445,8 @@ public class HttpServer extends NanoHTTPD {
                 images.add(new Image(id, dateTaken, dateModified, size, name));
             }
         }
+
+        Collections.sort(images, (o1, o2) -> -Long.compare(((Image)o1).dateTaken, ((Image)o2).dateTaken));
 
         return images;
     }
