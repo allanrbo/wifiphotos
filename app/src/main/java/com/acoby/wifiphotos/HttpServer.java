@@ -54,11 +54,11 @@ public class HttpServer extends NanoHTTPD {
 
     boolean threadPrioritySet = false;
 
-    public HttpServer(AppCompatActivity activity) {
+    public HttpServer(AppCompatActivity activity, ImageResizer imageResizer) throws IOException {
         super(8080);
         this.activity = activity;
         this.gson = new Gson();
-        this.imageResizer = new ImageResizer(this.activity);
+        this.imageResizer = imageResizer;
         this.apiNotFoundResponse = this.newFixedLengthResponse(Response.Status.NOT_FOUND, "application/json", "{\"status\":\"error\",\"message\":\"Not found\"}");
         this.htmlNotFoundResponse = this.newFixedLengthResponse(Response.Status.NOT_FOUND, NanoHTTPD.MIME_HTML, "Not found");
     }
@@ -138,7 +138,7 @@ public class HttpServer extends NanoHTTPD {
                 return this.newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(images));
             }
 
-            long bucketId ;
+            long bucketId;
             try {
                 bucketId = Long.parseLong(m.group(1));
             } catch (NumberFormatException e) {
@@ -195,9 +195,8 @@ public class HttpServer extends NanoHTTPD {
                         return this.newChunkedResponse(Response.Status.OK, "image/jpeg", in);
                     }
 
-                    File resizedImageFile = imageResizer.getResizedImageFile(imageID, isTrash, size);
-                    FileInputStream f = new FileInputStream(resizedImageFile);
-                    return this.newChunkedResponse(Response.Status.OK, "image/jpeg", f);
+                    InputStream inputStream = imageResizer.getResizedImageFile(imageID, isTrash, size);
+                    return this.newChunkedResponse(Response.Status.OK, "image/jpeg", inputStream );
                 } catch (IOException e) {
                     Log.v(MainActivity.TAG, Log.getStackTraceString(e));
                     return this.apiNotFoundResponse;
@@ -265,18 +264,11 @@ public class HttpServer extends NanoHTTPD {
         if (DebugFeatures.COMPILE_WITH_DEBUG_FEATURES) {
             if (uri.equals("/api/clearcache")) {
                 if (session.getMethod() == Method.POST) {
-                    File[] cacheDirs = new File[]{this.activity.getExternalCacheDir(), this.activity.getCacheDir()};
-                    for (File cacheDir : cacheDirs) {
-                        for (File f : cacheDir.listFiles()) {
-                            try {
-                                Log.v(MainActivity.TAG, "Deleting " + f.toString());
-                                f.delete();
-                            } catch (Exception e) {
-                                Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-                            }
-                        }
+                    try {
+                        this.imageResizer.deleteCacheAll();
+                    } catch(Exception e) {
+                        Log.v(MainActivity.TAG, Log.getStackTraceString(e));
                     }
-
                     return this.addNoCacheHeaders(this.newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_HTML, "Resized photo cache cleared<br/><form method=\"post\"><input type=\"submit\" value=\"Clear resized photo cache\"/></form>"));
                 } else {
                     return this.newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_HTML, "<form method=\"post\"><input type=\"submit\" value=\"Clear resized photo cache\"/></form>");
@@ -430,7 +422,6 @@ public class HttpServer extends NanoHTTPD {
                 File metaDataFile = new File(dir + "/" + f + ".json");
                 if (metaDataFile.exists()) {
                     try {
-
                         Reader r = new FileReader(metaDataFile);
                         Type stringStringMap = new TypeToken<Map<String, String>>(){}.getType();
                         Map<String,Object> vals = this.gson.fromJson(r, stringStringMap);
@@ -442,6 +433,7 @@ public class HttpServer extends NanoHTTPD {
                         size = (long) vals.get(MediaStore.Images.Media.SIZE);
                         id = (long) vals.get(MediaStore.Images.Media._ID);
                     } catch (Exception e) {
+                        // TODO
                     }
                 }
 
@@ -456,12 +448,12 @@ public class HttpServer extends NanoHTTPD {
         Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageID);
 
         File dir = this.activity.getExternalFilesDir("trash");
-        File filePath = new File(dir + "/" + imageID + ".jpeg");
-        Log.v(MainActivity.TAG, "Moving to trash: " + filePath);
+        File file = new File(dir + "/" + imageID + ".jpeg");
+        Log.v(MainActivity.TAG, "Moving to trash: " + file);
 
         // Copy meta data to trash directory.
         Cursor cur = this.activity.getContentResolver().query(contentUri, null, null, null, null);
-        cur.moveToNext();
+        cur.moveToFirst();
         Map<String,Object> vals = new HashMap<>();
         for (String colName : cur.getColumnNames()) {
             int colIdx = cur.getColumnIndex(colName);
@@ -474,14 +466,15 @@ public class HttpServer extends NanoHTTPD {
                 vals.put(cur.getColumnName(colIdx), cur.getString(colIdx));
             }
         }
-        OutputStream out = new FileOutputStream(filePath + ".json");
-        Log.v(MainActivity.TAG, this.gson.toJson(vals));
+        cur.close();
+
+        OutputStream out = new FileOutputStream(file + ".json");
         out.write(this.gson.toJson(vals).getBytes());
         out.close();
 
         // Copy actual JPEG to trash directory.
         InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
-        out = new FileOutputStream(filePath);
+        out = new FileOutputStream(file);
         HttpServer.copyStream(in, out);
         out.close();
         in.close();
@@ -501,6 +494,8 @@ public class HttpServer extends NanoHTTPD {
         if (metaDataFile.exists()) {
             metaDataFile.delete();
         }
+
+        this.imageResizer.deleteCache(imageID);
     }
 
     private void restoreImageFromTrash(long imageID) throws IOException {
@@ -518,6 +513,7 @@ public class HttpServer extends NanoHTTPD {
                 vals = this.gson.fromJson(r, stringStringMap);
                 r.close();
             } catch (Exception e) {
+                // TODO
             }
         }
 

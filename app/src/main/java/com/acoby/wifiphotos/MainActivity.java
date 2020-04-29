@@ -21,6 +21,8 @@ public class MainActivity extends AppCompatActivity {
     public static String TAG = "WifiPhotos";
 
     private HttpServer httpServer;
+    private ImageResizer imageResizer;
+
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
 
@@ -54,8 +56,10 @@ public class MainActivity extends AppCompatActivity {
         this.wifiLock.acquire();
 
         try {
+            this.imageResizer = new ImageResizer(this);
+
             Log.v(TAG,"Starting HTTP server");
-            this.httpServer = new HttpServer(this);
+            this.httpServer = new HttpServer(this, this.imageResizer);
             this.httpServer.start();
         } catch(Exception e) {
             Log.v(TAG, Log.getStackTraceString(e));
@@ -76,6 +80,10 @@ public class MainActivity extends AppCompatActivity {
 
         if (this.httpServer != null) {
             this.httpServer.stop();
+        }
+
+        if (this.imageResizer != null) {
+            this.imageResizer.close();
         }
     }
 
