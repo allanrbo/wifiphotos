@@ -42,7 +42,7 @@ public class ImageResizer {
             this.cacheDir = this.activity.getCacheDir();
         }
 
-        int maxConcurrency = 1; //Runtime.getRuntime().availableProcessors();
+        int maxConcurrency = Runtime.getRuntime().availableProcessors();
         this.semaphore = new Semaphore(maxConcurrency, true);
         Log.v(MainActivity.TAG, "Initial max concurrency when resizing images: " + maxConcurrency);
     }
