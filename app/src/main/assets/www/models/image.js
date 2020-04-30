@@ -16,6 +16,7 @@ var Image = {
             Image.listLoaded = true;
             throw e;
         })
+        .catch(handleUnauthorized)
         .catch(alertErrorMessage);
     },
 
@@ -30,6 +31,7 @@ var Image = {
             url: url,
             config: xhrConfig
         })
+        .catch(handleUnauthorized)
         .catch(alertErrorMessage);
     },
 
@@ -40,6 +42,7 @@ var Image = {
             body: { "action": "restore" },
             config: xhrConfig
         })
+        .catch(handleUnauthorized)
         .catch(alertErrorMessage);
     }
 }

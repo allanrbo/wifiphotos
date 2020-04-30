@@ -28,6 +28,7 @@ var Bucket = {
             Bucket.listLoaded = true;
             throw e;
         })
+        .catch(handleUnauthorized)
         .catch(alertErrorMessage);
     }
 }

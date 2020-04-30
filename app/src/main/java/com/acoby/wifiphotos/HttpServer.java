@@ -9,6 +9,11 @@ import android.os.Environment;
 import android.os.Process;
 import android.provider.MediaStore;
 import android.util.Log;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.PopupWindow;
+import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -31,6 +36,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,10 +48,12 @@ import static android.database.Cursor.FIELD_TYPE_INTEGER;
 import static android.database.Cursor.FIELD_TYPE_STRING;
 
 public class HttpServer extends NanoHTTPD {
-
     AppCompatActivity activity;
     Gson gson;
     ImageResizer imageResizer;
+
+    HashSet<String> allowedTokens = new HashSet<>();
+    boolean loginInProgress = false;
 
     Pattern apiBucketContentsRegex = Pattern.compile("/api/buckets/([0-9-]+|trash)");
     Pattern apiImageRegex = Pattern.compile("/api/images/(trash/)?([0-9-]+)");
@@ -59,7 +68,8 @@ public class HttpServer extends NanoHTTPD {
         this.activity = activity;
         this.gson = new Gson();
         this.imageResizer = imageResizer;
-        this.apiNotFoundResponse = this.newFixedLengthResponse(Response.Status.NOT_FOUND, "application/json", "{\"status\":\"error\",\"message\":\"Not found\"}");
+
+        this.apiNotFoundResponse = this.newJsonMsgResponse(Response.Status.NOT_FOUND, "error", "Not found");
         this.htmlNotFoundResponse = this.newFixedLengthResponse(Response.Status.NOT_FOUND, NanoHTTPD.MIME_HTML, "Not found");
     }
 
@@ -80,11 +90,7 @@ public class HttpServer extends NanoHTTPD {
             return this.addCorsHeaders(this.serveStaticFiles(session));
         } catch(Exception e) {
             Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-
-            Map<String,String> m = new HashMap<>();
-            m.put("status", "error");
-            m.put("message", "Internal error: " + e.getClass().getName() + ": " + e.getMessage());
-            return this.addCorsHeaders(this.newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json", this.gson.toJson(m)));
+            return this.newJsonMsgResponse( Response.Status.INTERNAL_ERROR, "error", "Internal error: " + e.getClass().getName() + ": " + e.getMessage());
         }
     }
 
@@ -112,12 +118,119 @@ public class HttpServer extends NanoHTTPD {
     private Response serveApi(IHTTPSession session) {
         String uri = session.getUri();
 
-        if (DebugFeatures.COMPILE_WITH_DEBUG_FEATURES) {
-            // Access-Control headers (CORS) are received during OPTIONS requests.
-            if (session.getMethod() == Method.OPTIONS) {
-                Response r = this.newFixedLengthResponse(Response.Status.OK, "application/json", "{\"status\": \"ok\"}");
-                return r;
+        String body = null;
+        if (session.getMethod() == Method.POST) {
+            // Read the request body.
+            // It is important to always read the request body if there is one, even if we don't need it, or else on subsequent requests we will get a "java.net.SocketException: recvfrom failed: EBADF (Bad file number)".
+            // This is most likely due to a bug in NanoHTTPD
+            try {
+                HashMap<String, String> map = new HashMap<String, String>();
+                session.parseBody(map);
+                body = map.get("postData");
+            } catch (Exception e) {
+                return this.newJsonMsgResponse(Response.Status.BAD_REQUEST, "error", "error while reading request body");
             }
+        }
+
+        // Access-Control headers (CORS) are received during OPTIONS requests.
+        if (session.getMethod() == Method.OPTIONS) {
+            return this.newJsonMsgResponse(Response.Status.OK, "ok", null);
+        }
+
+        /*
+         * Login endpoint.
+         */
+        if (uri.equals("/api/login") && session.getMethod() == Method.POST) {
+            synchronized (this) {
+                // Was a login already in progress?
+                if(this.loginInProgress) {
+                    Log.v(MainActivity.TAG, "login already in progress");
+                    return this.newJsonMsgResponse(Response.Status.OK, "deny", null);
+                }
+            }
+
+            // Get request body, and get PIN and token from it.
+            if (body == null || body.equals("")) {
+                return this.newJsonMsgResponse(Response.Status.BAD_REQUEST, "error", "request body was empty");
+            }
+            Type stringStringMap = new TypeToken<Map<String, String>>(){}.getType();
+            Map<String, String> vals;
+            try {
+                vals = this.gson.fromJson(body, stringStringMap);
+            } catch(Exception e) {
+                return this.newJsonMsgResponse(Response.Status.BAD_REQUEST, "error", "request body parsing error");
+            }
+            if (!vals.containsKey("pin") || !vals.containsKey("token")) {
+                return this.newJsonMsgResponse(Response.Status.BAD_REQUEST, "error", "request body did not contain expected fields");
+            }
+
+            BlockingQueue<String> blockingQueue = new LinkedBlockingQueue<String>();
+
+
+            HttpServer thisHttpServer = this;
+            this.activity.runOnUiThread(() -> {
+                synchronized (thisHttpServer) {
+                    this.loginInProgress = true;
+                }
+
+                View customView = this.activity.getLayoutInflater().inflate(R.layout.allow_access_popup, null);
+                PopupWindow popupWindow = new PopupWindow(customView, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+
+                TextView tv = customView.findViewById(R.id.connectionPinTxt);
+                tv.setText("PIN: " + vals.get("pin"));
+
+                customView.findViewById(R.id.allowBtn).setOnClickListener((View v) -> {
+                    this.allowedTokens.add(vals.get("token"));
+                    blockingQueue.add("allow");
+                    synchronized (thisHttpServer) {
+                        this.loginInProgress = false;
+                    }
+                    popupWindow.dismiss();
+                });
+
+                customView.findViewById(R.id.denyBtn).setOnClickListener((View v) -> {
+                    blockingQueue.add("deny");
+                    synchronized (thisHttpServer) {
+                        this.loginInProgress = false;
+                    }
+                    popupWindow.dismiss();
+                });
+
+                popupWindow.showAtLocation(this.activity.findViewById(R.id.layout1), Gravity.CENTER, 0, 0);
+            });
+
+            try {
+                String result = blockingQueue.take();
+                Log.v(MainActivity.TAG, "Result from login request with PIN " + vals.get("pin") + ": " + result);
+                for (String s : this.allowedTokens) {
+                    Log.v(MainActivity.TAG, "Allowed token: " + s);
+                }
+                Response r = this.newJsonMsgResponse(Response.Status.OK, result, null);
+                String setCookieVal = "authtoken=" + vals.get("token");
+                r.addHeader("Set-Cookie", setCookieVal);
+                return r;
+            } catch(InterruptedException e) {
+                Log.v(MainActivity.TAG, Log.getStackTraceString(e));
+                return this.newJsonMsgResponse(Response.Status.INTERNAL_ERROR, "error", "Error while waiting for approve/deny");
+            }
+        }
+
+        // All endpoints below require that requests are authenticated (unless compiled with debug features).
+        if (!DebugFeatures.COMPILE_WITH_DEBUG_FEATURES) {
+            String authToken = session.getCookies().read("authtoken");
+            if (authToken == null) {
+                return this.newJsonMsgResponse(Response.Status.FORBIDDEN, "unauthorized", "authtoken cookie required");
+            }
+            if (!this.allowedTokens.contains(authToken)) {
+                return this.newJsonMsgResponse(Response.Status.FORBIDDEN, "unauthorized", "bad authtoken cookie");
+            }
+        }
+
+        /*
+         * Ping endpoint.
+         */
+        if (uri.equals("/api/ping")) {
+            return this.newJsonMsgResponse(Response.Status.OK, "ok", null);
         }
 
         /*
@@ -212,48 +325,45 @@ public class HttpServer extends NanoHTTPD {
                         this.deleteImageFromTrash(imageID);
                     } catch (Exception e) {
                         Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-                        return this.newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json", "{\"status\":\"error\",\"message\":\"Error while deleting image\"}");
+                        return this.newJsonMsgResponse(Response.Status.INTERNAL_ERROR, "error", "Error while deleting image");
                     }
                 } else {
                     try {
                         this.moveImageToTrash(imageID);
                     } catch (Exception e) {
                         Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-                        return this.newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json", "{\"status\":\"error\",\"message\":\"Error while moving image to trash\"}");
+                        return this.newJsonMsgResponse(Response.Status.INTERNAL_ERROR, "error", "Error while moving image to trash");
                     }
                 }
 
-                return this.newFixedLengthResponse(Response.Status.OK, "application/json", "{\"status\":\"ok\"}");
+                return this.newJsonMsgResponse(Response.Status.OK, "ok", null);
             }
 
             /*
              * Restore image from trash endpoint.
              */
             if (session.getMethod() == Method.POST) {
-                String body = null;
-                try {
-                    HashMap<String, String> map = new HashMap<String, String>();
-                    session.parseBody(map);
-                    body = map.get("postData");
-                } catch (Exception e) {
-                    return this.apiNotFoundResponse;
+                // Check that the request body action field says "restore".
+                if (body == null || body.equals("")) {
+                    return this.newJsonMsgResponse(Response.Status.BAD_REQUEST, "error", "request body was empty");
                 }
-
-                if (body == null) {
-                    return this.apiNotFoundResponse;
-                }
-
                 Type stringStringMap = new TypeToken<Map<String, String>>(){}.getType();
-                Map<String,String> vals = this.gson.fromJson(body, stringStringMap);
+                Map<String, String> vals;
+                try {
+                    vals = this.gson.fromJson(body, stringStringMap);
+                } catch(Exception e) {
+                    return this.newJsonMsgResponse(Response.Status.BAD_REQUEST, "error", "request body parsing error");
+                }
                 if (!vals.containsKey("action") || !vals.get("action").equals("restore")) {
                     return this.apiNotFoundResponse;
                 }
 
+                // Do the actual restore.
                 try {
                     this.restoreImageFromTrash(imageID);
-                    return this.newFixedLengthResponse(Response.Status.OK, "application/json", "{\"status\":\"ok\"}");
+                    return this.newJsonMsgResponse(Response.Status.OK, "ok", null);
                 } catch (Exception e) {
-                    return this.newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json", "{\"status\":\"error\",\"message\":\"Error while restoring image from trash\"}");
+                    return this.newJsonMsgResponse(Response.Status.INTERNAL_ERROR, "error", "Error while restoring image from trash");
                 }
             }
         }
@@ -547,6 +657,15 @@ public class HttpServer extends NanoHTTPD {
         if (metaDataFile.exists()) {
             metaDataFile.delete();
         }
+    }
+
+    private Response newJsonMsgResponse(Response.IStatus httpCode, String status, String msg) {
+        Map<String,String> m = new HashMap<>();
+        m.put("status", status);
+        if (msg != null) {
+            m.put("message", msg);
+        }
+        return this.newFixedLengthResponse(httpCode, "application/json", this.gson.toJson(m));
     }
 
     // https://stackoverflow.com/a/22128215/40645

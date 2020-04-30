@@ -245,8 +245,9 @@ var ImageGrid = {
                                 img.addEventListener('load', function() {
                                     loadNextImgs();
                                 });
-                                img.addEventListener('error', function() {
-                                    loadNextImgs();
+                                img.addEventListener('error', function(e) {
+                                    Ping.ping()
+                                    .then(loadNextImgs);
                                 });
                             }
                         }
@@ -403,7 +404,7 @@ var ImageGrid = {
         }
 
         Promise.all(promises)
-        .then(function(a) {
+        .then(function() {
             Image.loadList(Bucket.currentId);
             ImageGrid.selectedImageIDs = [];
        });

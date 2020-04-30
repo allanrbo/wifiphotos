@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:background="#000"
+    android:padding="10dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="New connection"
+        android:textColor="#fff"
+        android:textAppearance="@style/TextAppearance.AppCompat.Large"/>
+
+    <TextView
+        android:id="@+id/connectionPinTxt"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="PIN: 0000"
+        android:textColor="#fff"
+        android:textAppearance="@style/TextAppearance.AppCompat.Large"/>
+
+
+    <Button
+        android:id="@+id/allowBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Allow" />
+
+    <Button
+        android:id="@+id/denyBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Deny" />
+
+</LinearLayout>
