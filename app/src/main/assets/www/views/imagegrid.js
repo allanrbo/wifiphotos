@@ -50,20 +50,26 @@ var ImageGrid = {
         var columns = Math.floor(docWidth / imgBoxSize);
 
         var marginTop = 37;
-        var marginLeft = (docWidth - imgBoxSize * columns) / 2;
+        var marginLeft = Math.floor((docWidth - imgBoxSize * columns) / 2);
         var curCol = 0;
         var curRow = 0;
-        var imgBoxPositions = [];
+        var imgBoxPositions = {};
         var imgBoxPositionsToDraw = [];
+        var lastTop = 0;
         for (var i = 0; i < Image.list.length; i++) {
 
+            var image = Image.list[i];
+            var resizedDims = Image.calcNewDimensions(image.width, image.height, imgSize);
+
             var imgBoxPos = {
-                image: Image.list[i],
+                image: image,
                 left: curCol*imgBoxSize + marginLeft,
                 top: curRow*imgBoxSize + marginTop,
+                width: resizedDims.width,
+                height: resizedDims.height
             };
 
-            imgBoxPositions.push(imgBoxPos);
+            imgBoxPositions[image.imageId] = imgBoxPos;
 
             // If an image box is more than halfway on the screen, we'll mark it as visible.
             var bottom = imgBoxPos.top + imgSize;
@@ -82,11 +88,12 @@ var ImageGrid = {
                 curCol = 0;
             }
 
+            lastTop = imgBoxPos.top;
         }
 
         var pageLength = 0;
-        if (imgBoxPositions.length > 0) {
-            pageLength = imgBoxPositions[imgBoxPositions.length-1].top + imgBoxSize;
+        if (Image.list.length > 0) {
+            pageLength = lastTop + imgBoxSize;
         }
 
         return [
@@ -235,8 +242,11 @@ var ImageGrid = {
                                 return;
                             }
 
+                            var imgBoxPos = imgBoxPositions[imageId];
+
                             img = document.createElement("img");
                             img.src = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "?size=" + ImageGrid.imageSize;
+                            img.style = "max-width:" + imgBoxPos.width + "px;max-height:" + imgBoxPos.height + "px;";
                             imgDiv.appendChild(img);
                             if (img.complete) {
                                 return;

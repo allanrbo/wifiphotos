@@ -485,19 +485,32 @@ public class HttpServer extends NanoHTTPD {
         public long dateModified;
         public long size;
         public String name;
+        public int width;
+        public int height;
 
-        public Image(long imageId, long dateTaken, long dateModified, long size, String name) {
+
+        public Image(long imageId, long dateTaken, long dateModified, long size, String name, int width, int height) {
             this.imageId = imageId;
             this.dateTaken = dateTaken;
             this.dateModified = dateModified;
             this.size = size;
             this.name = name;
+            this.width = width;
+            this.height = height;
         }
     }
 
     private List<Image> getImageIDs(long bucketID) {
         // Query the Android MediaStore API.
-        String[] projection = new String[]{MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DATE_MODIFIED, MediaStore.Images.Media.SIZE, MediaStore.Images.Media.DISPLAY_NAME};
+        String[] projection = new String[]{
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DATE_TAKEN,
+                MediaStore.Images.Media.DATE_MODIFIED,
+                MediaStore.Images.Media.SIZE,
+                MediaStore.Images.Media.DISPLAY_NAME,
+                MediaStore.Images.Media.WIDTH,
+                MediaStore.Images.Media.HEIGHT,
+        };
         String selection = MediaStore.Images.Media.BUCKET_ID + " == ?";
         String[] selectionArgs = {bucketID + ""};
         String sortOrder = MediaStore.Images.Media.DATE_TAKEN + " DESC";
@@ -508,10 +521,19 @@ public class HttpServer extends NanoHTTPD {
         int dateModifiedIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_MODIFIED);
         int sizeIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE);
         int displayNameIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME);
+        int widthIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH);
+        int heightIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT);
 
         List<Image> imageIDs = new ArrayList<Image>();
         while (cur.moveToNext()) {
-            imageIDs.add(new Image(cur.getLong(idIdx), cur.getLong(dateTakenIdx), cur.getLong(dateModifiedIdx), cur.getLong(sizeIdx), cur.getString(displayNameIdx)));
+            imageIDs.add(new Image(
+                    cur.getLong(idIdx),
+                    cur.getLong(dateTakenIdx),
+                    cur.getLong(dateModifiedIdx),
+                    cur.getLong(sizeIdx),
+                    cur.getString(displayNameIdx),
+                    cur.getInt(widthIdx),
+                    cur.getInt(heightIdx)));
         }
         cur.close();
 
@@ -527,6 +549,8 @@ public class HttpServer extends NanoHTTPD {
                 long dateTaken = 0;
                 long dateModified = 0;
                 long size = 0;
+                int width = 0;
+                int height = 0;
                 String name = "" + id;
 
                 File metaDataFile = new File(dir + "/" + f + ".json");
@@ -545,6 +569,8 @@ public class HttpServer extends NanoHTTPD {
                         dateModified = Long.parseLong(vals.get(MediaStore.Images.Media.DATE_MODIFIED));
                         size = Long.parseLong(vals.get(MediaStore.Images.Media.SIZE));
                         id = Long.parseLong(vals.get(MediaStore.Images.Media._ID));
+                        width = Integer.parseInt(vals.get(MediaStore.Images.Media.WIDTH));
+                        height = Integer.parseInt(vals.get(MediaStore.Images.Media.HEIGHT));
                     } catch (Exception e) {
                         Log.v(MainActivity.TAG, Log.getStackTraceString(e));
 
@@ -552,7 +578,7 @@ public class HttpServer extends NanoHTTPD {
                     }
                 }
 
-                images.add(new Image(id, dateTaken, dateModified, size, name));
+                images.add(new Image(id, dateTaken, dateModified, size, name, width, height));
             }
         }
 

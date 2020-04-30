@@ -44,5 +44,33 @@ var Image = {
         })
         .catch(handleUnauthorized)
         .catch(alertErrorMessage);
+    },
+
+    calcNewDimensions: function(srcWidth, srcHeight, dstSize) {
+        if (srcWidth == 0 || srcHeight == 0) {
+            return {width: srcWidth, height: srcHeight};
+        }
+
+        var dstWidth;
+        var dstHeight;
+        if (srcWidth > srcHeight) {
+            if (srcWidth > dstSize) {
+                dstWidth = dstSize;
+                dstHeight = Math.floor((srcHeight * dstSize) / srcWidth);
+            } else {
+                dstWidth = srcWidth;
+                dstHeight = srcHeight;
+            }
+        } else {
+            if (srcHeight > dstSize) {
+                dstWidth = Math.floor((srcWidth * dstSize) / srcHeight);
+                dstHeight = dstSize;
+            } else {
+                dstWidth = srcWidth;
+                dstHeight = srcHeight;
+            }
+        }
+
+        return {width: dstWidth, height: dstHeight};
     }
 }

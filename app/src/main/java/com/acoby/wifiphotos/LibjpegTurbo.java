@@ -11,5 +11,5 @@ public class LibjpegTurbo {
 
     public static native Bitmap decompress(ByteBuffer jpegData);
 
-    public static native ByteBuffer compress(Bitmap input, int width, int height);
+    public static native ByteBuffer compress(Bitmap input);
 }

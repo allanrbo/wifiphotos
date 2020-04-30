@@ -2,6 +2,8 @@ package com.acoby.wifiphotos;
 
 import android.database.Cursor;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Point;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.renderscript.Allocation;
@@ -79,10 +81,11 @@ public class ImageResizer {
 
         // Retry-loop for in case we hit OutOfMemoryError or other transient problems while resizing.
         for(int retries = 0; ; retries++) {
+            InputStream in = null;
             try {
                 long before = System.currentTimeMillis();
 
-                InputStream in = this.openOrigImage(imageID, isTrash);
+                in = this.openOrigImage(imageID, isTrash);
                 ByteBuffer jpegData = ByteBuffer.allocateDirect(in.available());
                 Channels.newChannel(in).read(jpegData);
                 in.close();
@@ -92,11 +95,25 @@ public class ImageResizer {
                 Log.v(MainActivity.TAG, "Resized image " + imageID + " in " + (System.currentTimeMillis() - before) + "ms");
                 break;
             } catch (FileNotFoundException e) {
+                if (in != null) {
+                    in.close();
+                }
+                this.concurrentCount.decrementAndGet();
+                this.semaphore.release();
                 throw e;
             } catch (OutOfMemoryError e) { // Throwable instead of Exception to also get OutOfMemoryError
-                Log.v(MainActivity.TAG, "OutOfMemoryError on thread " + Thread.currentThread().getId() + " while resizing " + this.concurrentCount.get()  + " images concurrently. Attempting to lower concurrency and retry.");
+                if (in != null) {
+                    in.close();
+                }
+
+                if (retries++ > 5) {
+                    this.concurrentCount.decrementAndGet();
+                    this.semaphore.release();
+                    throw e;
+                }
 
                 // Lower the max concurrency to one less than the current number, unless this is the only current thread.
+                Log.v(MainActivity.TAG, "OutOfMemoryError on thread " + Thread.currentThread().getId() + " while resizing " + this.concurrentCount.get()  + " images concurrently. Attempting to lower concurrency and retry.");
                 this.semaphore.drainPermits();
                 if (this.concurrentCount.get() > 1) {
                     this.semaphore.acquireUninterruptibly();
@@ -105,12 +122,25 @@ public class ImageResizer {
                     Log.v(MainActivity.TAG, "OutOfMemoryError follow up: Thread " + Thread.currentThread().getId() + " was the only thread that was resizing. Ensured concurrency is max 1 going forward.");
                 }
             } catch (Exception e) {
+                if (in != null) {
+                    in.close();
+                }
+
+                if (retries++ > 5) {
+                    this.concurrentCount.decrementAndGet();
+                    this.semaphore.release();
+
+                    try {
+                        // As a last resort, try just returning the original image.
+                        return this.openOrigImage(imageID, isTrash);
+                    } catch (Exception e2) {
+                        throw e;
+                    }
+                }
+
                 Log.v(MainActivity.TAG, "Got exception while resizing image " + imageID);
                 Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-                if (retries++ > 5) {
-                    throw e;
-                }
-                Log.v(MainActivity.TAG, "Retrying");
+                Log.v(MainActivity.TAG, "Retrying in 500ms");
                 try {
                     Thread.sleep(500);
                 } catch(InterruptedException e2) {
@@ -127,8 +157,31 @@ public class ImageResizer {
         out.close();
         editor.commit();
 
-        resizedImage.rewind();
         return new ByteBufferBackedInputStream(resizedImage);
+    }
+
+    private int[] calcNewDimensions(int srcWidth, int srcHeight, int dstSize) {
+        int dstWidth;
+        int dstHeight;
+        if (srcWidth > srcHeight) {
+            if (srcWidth > dstSize) {
+                dstWidth = dstSize;
+                dstHeight = (srcHeight * dstSize) / srcWidth;
+            } else {
+                dstWidth = srcWidth;
+                dstHeight = srcHeight;
+            }
+        } else {
+            if (srcHeight > dstSize) {
+                dstWidth = (srcWidth * dstSize) / srcHeight;
+                dstHeight = dstSize;
+            } else {
+                dstWidth = srcWidth;
+                dstHeight = srcHeight;
+            }
+        }
+
+        return new int[] {dstWidth, dstHeight};
     }
 
     private InputStream openOrigImage(long imageID, boolean isTrash) throws FileNotFoundException {
@@ -182,33 +235,9 @@ public class ImageResizer {
 
     private ByteBuffer resize(ByteBuffer in, int size) {
         Bitmap src = LibjpegTurbo.decompress(in);
-
-        // Calculate new dimensions.
-        int srcWidth = src.getWidth();
-        int srcHeight = src.getHeight();
-        int dstWidth;
-        int dstHeight;
-        if (srcWidth > srcHeight) {
-            if (srcWidth > size) {
-                dstWidth = size;
-                dstHeight = (srcHeight * size) / srcWidth;
-            } else {
-                dstWidth = srcWidth;
-                dstHeight = srcHeight;
-            }
-        } else {
-            if (srcHeight > size) {
-                dstWidth = (srcWidth * size) / srcHeight;
-                dstHeight = size;
-            } else {
-                dstWidth = srcWidth;
-                dstHeight = srcHeight;
-            }
-        }
-
-        Bitmap dst = resizeBitmap2(src, dstWidth);
-
-        ByteBuffer outBuffer = LibjpegTurbo.compress(dst, dstWidth, dstHeight);
+        int[] dstSize = this.calcNewDimensions(src.getWidth(), src.getHeight(), size);
+        Bitmap dst = resizeBitmap2(src, dstSize[0]);
+        ByteBuffer outBuffer = LibjpegTurbo.compress(dst);
 
         if (!dst.isRecycled()) {
             dst.recycle();

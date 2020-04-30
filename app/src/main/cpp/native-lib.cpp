@@ -116,7 +116,11 @@ jobject Java_com_acoby_wifiphotos_LibjpegTurbo_decompress(JNIEnv *env, jclass c,
 
 
 extern "C" JNIEXPORT JNICALL
-jobject Java_com_acoby_wifiphotos_LibjpegTurbo_compress(JNIEnv *env, jclass c, jobject input, jint width, jint height) {
+jobject Java_com_acoby_wifiphotos_LibjpegTurbo_compress(JNIEnv *env, jclass c, jobject input) {
+    AndroidBitmapInfo bitmapInfo;
+    AndroidBitmap_getInfo(env, input, &bitmapInfo);
+
+
     tjhandle tjInstance = NULL;
     if ((tjInstance = tjInitCompress()) == NULL) {
         throwRuntimeException(env, "tjInitCompress failed");
@@ -130,7 +134,7 @@ jobject Java_com_acoby_wifiphotos_LibjpegTurbo_compress(JNIEnv *env, jclass c, j
 
     unsigned long jpegSize;
     unsigned char *jpegBuf = NULL;
-    if (tjCompress2(tjInstance, (unsigned char *) bitmapPixels, width, 0, height, TJPF_RGBA, &jpegBuf, &jpegSize, TJSAMP_444, 80, 0) < 0) {
+    if (tjCompress2(tjInstance, (unsigned char *) bitmapPixels, bitmapInfo.width, 0, bitmapInfo.height, TJPF_RGBA, &jpegBuf, &jpegSize, TJSAMP_444, 80, 0) < 0) {
         AndroidBitmap_unlockPixels(env, input);
         throwRuntimeException(env, "tjCompress2 failed");
         return NULL;
