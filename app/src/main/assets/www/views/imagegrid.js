@@ -1,6 +1,6 @@
 var ImageGrid = {
     scrollHandlerPending: false,
-    imageSize: 600,
+    imageSize: 0,
     selectedImageIDs: [],
     shouldScrollToTimestamp: false,
     shouldScrollToTimestamp2: 0,
@@ -13,8 +13,16 @@ var ImageGrid = {
         Bucket.currentId = null;
         Image.list = [];
         Bucket.loadList().then(function() {
-            Image.loadList(Bucket.currentId).then(function() {
-            })
+            var savedBucketId = localStorage.getItem("bucketId");
+            for (var i = 0; i < Bucket.list.length; i++) {
+                if (Bucket.list[i].id == savedBucketId) {
+                    // Saved bucket ID was valid. Restoring.
+                    Bucket.currentId = savedBucketId;
+                    break;
+                }
+            }
+
+            Image.loadList(Bucket.currentId);
         });
 
         window.addEventListener('scroll', ImageGrid.scrollHandler, false);
@@ -28,6 +36,11 @@ var ImageGrid = {
                 m.redraw();
             }
         }, false);
+
+        ImageGrid.imageSize = localStorage.getItem("imageSize");
+        if (ImageGrid.imageSize == null) {
+            ImageGrid.imageSize = 600
+        }
     },
 
     view: function(vnode) {
@@ -87,7 +100,6 @@ var ImageGrid = {
             if (ImageGrid.shouldScrollToTimestamp && imgBoxPos.image.dateTaken <= ImageGrid.scrolledToTimestamp) {
                 var f = function(scrollTop) {
                     return function() {
-                    console.log("scrolling to " + scrollTop);
                         document.documentElement.scrollTop = scrollTop - 50;
                     }
                 }(imgBoxPos.top);
@@ -347,15 +359,23 @@ var ImageGrid = {
                             onchange: function(e) {
                                 Image.list = [];
                                 Bucket.currentId = e.target.value;
+                                localStorage.setItem("bucketId", Bucket.currentId);
                                 ImageGrid.selectedImageIDs = [];
                                 Image.loadList(Bucket.currentId);
                             },
                         },
                         [
                             Bucket.list.map(function(bucket) {
-                                return m("option", {value: bucket.id, selected: Bucket.currentId == bucket.id ? "selected" : ""}, bucket.displayName);
+                                // This is a workaround. This shouldn't be necessary, because we are setting the "selected" attribute below, but for some reason it's not enough.
+                                if (Bucket.currentId == bucket.id) {
+                                    setTimeout(function() {
+                                        document.getElementById("collection").value = Bucket.currentId;
+                                    }, 0);
+                                }
+
+                                return m("option", {value: bucket.id, selected: (Bucket.currentId == bucket.id ? "selected" : "")}, bucket.displayName);
                             }),
-                            m("option", {value: "trash", selected: Bucket.currentId == "trash" ? "selected" : ""}, "Trash")
+                            m("option", {value: "trash", selected: (Bucket.currentId == "trash" ? "selected" : "")}, "Trash")
                         ]
                     )
                 ]),
@@ -366,16 +386,13 @@ var ImageGrid = {
                         {
                             onchange: function(e) {
                                 ImageGrid.imageSize = e.target.value;
+                                localStorage.setItem("imageSize", ImageGrid.imageSize);
                                 ImageGrid.shouldScrollToTimestamp = true;
                                 ImageGrid.scrollHandler();
                             }
                         },
                         [100,200,300,400,500,600,700,800,900,1000].map(function(s) {
-                            var selected = "";
-                            if (ImageGrid.imageSize == s) {
-                                selected = "selected";
-                            }
-                            return m("option", {value: s, selected: selected}, s + " px");
+                            return m("option", {value: s, selected: ImageGrid.imageSize == s ? "selected" : ""}, s + " px");
                         })
                     )
                 ]),
