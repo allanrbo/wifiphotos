@@ -12,6 +12,7 @@ var ImageGrid = {
         Bucket.list = [];
         Bucket.currentId = null;
         Image.list = [];
+
         Bucket.loadList().then(function() {
             var savedBucketId = localStorage.getItem("bucketId");
             for (var i = 0; i < Bucket.list.length; i++) {
@@ -490,6 +491,7 @@ var ImageGrid = {
         ImageGrid.scrolledToTimestamp = ImageGrid.previouslyViewedScrolledToTimestamp;
         ImageGrid.shouldScrollToTimestamp = true;
         ImageGrid.selectedImageIDs = [];
+        Image.list = [];
         Image.loadList(Bucket.currentId);
     }
 }
