@@ -1,11 +1,12 @@
 var ImageGrid = {
-
     scrollHandlerPending: false,
     imageSize: 600,
     selectedImageIDs: [],
+    shouldScrollToTimestamp: false,
+    shouldScrollToTimestamp2: 0,
+    scrolledToTimestamp: 0,
     previouslyViewedCollection: 0,
-    imagesBoxesToRenderStart: 0,
-    imagesBoxesToRenderEnd: 30,
+    previouslyViewedScrolledToTimestamp: 0,
 
     oninit: function() {
         Bucket.list = [];
@@ -35,6 +36,17 @@ var ImageGrid = {
             loading = true;
         }
 
+        if (Ping.lostConnection) {
+            return m(".login", [
+                m("div", "Lost connection to device. Check that the app is still open."),
+                m("button", {
+                    onclick: function() {
+                        Ping.ping();
+                    }
+                }, "Retry")
+            ]);
+        }
+
         var isTrash = Bucket.currentId == "trash";
 
         var docWidth = document.body.clientWidth;
@@ -56,8 +68,8 @@ var ImageGrid = {
         var imgBoxPositions = {};
         var imgBoxPositionsToDraw = [];
         var lastTop = 0;
+        var firstVisibleImageBoxPos = null;
         for (var i = 0; i < Image.list.length; i++) {
-
             var image = Image.list[i];
             var resizedDims = Image.calcNewDimensions(image.width, image.height, imgSize);
 
@@ -71,10 +83,25 @@ var ImageGrid = {
 
             imgBoxPositions[image.imageId] = imgBoxPos;
 
+            // Scroll to a previously saved position if this is the right image box to scroll to.
+            if (ImageGrid.shouldScrollToTimestamp && imgBoxPos.image.dateTaken <= ImageGrid.scrolledToTimestamp) {
+                var f = function(scrollTop) {
+                    return function() {
+                    console.log("scrolling to " + scrollTop);
+                        document.documentElement.scrollTop = scrollTop - 50;
+                    }
+                }(imgBoxPos.top);
+                setTimeout(f, 0);
+                ImageGrid.shouldScrollToTimestamp = false;
+            }
+
             // If an image box is more than halfway on the screen, we'll mark it as visible.
             var bottom = imgBoxPos.top + imgSize;
             if (scrollTop - imgSize * 0.5 <= imgBoxPos.top && bottom <= scrollBottom + imgSize * 0.5) {
                 imgBoxPos.visible = true;
+                if (firstVisibleImageBoxPos == null) {
+                    firstVisibleImageBoxPos = imgBoxPos;
+                }
             }
 
             // If an image box is within a short distance from the visible screen, we'll draw the image box.
@@ -89,6 +116,16 @@ var ImageGrid = {
             }
 
             lastTop = imgBoxPos.top;
+        }
+
+        // Save the timestamp of the image in the top right corner, in case we need to scroll to it later.
+        if (firstVisibleImageBoxPos != null && ImageGrid.shouldScrollToTimestamp == false) {
+            ImageGrid.scrolledToTimestamp = firstVisibleImageBoxPos.image.dateTaken;
+        }
+
+        // Only after the image list is loaded we are done with trying to scroll back to the image after the scrolledToTimestamp timestamp.
+        if (Image.listLoaded) {
+            ImageGrid.shouldScrollToTimestamp = false;
         }
 
         var pageLength = 0;
@@ -245,9 +282,9 @@ var ImageGrid = {
                             var imgBoxPos = imgBoxPositions[imageId];
 
                             img = document.createElement("img");
+                            imgDiv.appendChild(img);
                             img.src = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "?size=" + ImageGrid.imageSize;
                             img.style = "max-width:" + imgBoxPos.width + "px;max-height:" + imgBoxPos.height + "px;";
-                            imgDiv.appendChild(img);
                             if (img.complete) {
                                 return;
                             } else {
@@ -329,6 +366,7 @@ var ImageGrid = {
                         {
                             onchange: function(e) {
                                 ImageGrid.imageSize = e.target.value;
+                                ImageGrid.shouldScrollToTimestamp = true;
                                 ImageGrid.scrollHandler();
                             }
                         },
@@ -422,6 +460,8 @@ var ImageGrid = {
 
     viewTrash: function() {
         ImageGrid.previouslyViewedCollection = Bucket.currentId;
+        ImageGrid.previouslyViewedScrolledToTimestamp = ImageGrid.scrolledToTimestamp;
+        ImageGrid.scrolledToTimestamp = 0;
         Image.list = [];
         Bucket.currentId = "trash";
         ImageGrid.selectedImageIDs = [];
@@ -430,8 +470,9 @@ var ImageGrid = {
 
     returnToPreviouslyViewedCollection: function() {
         Bucket.currentId = ImageGrid.previouslyViewedCollection;
+        ImageGrid.scrolledToTimestamp = ImageGrid.previouslyViewedScrolledToTimestamp;
+        ImageGrid.shouldScrollToTimestamp = true;
         ImageGrid.selectedImageIDs = [];
         Image.loadList(Bucket.currentId);
     }
-
 }

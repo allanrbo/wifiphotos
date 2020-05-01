@@ -3,15 +3,17 @@ var xhrConfig = function(xhr) {
 };
 
 var handleUnauthorized = function(e) {
-    if(e.response.status == "unauthorized") {
+    if(e.response != null && e.response.status == "unauthorized") {
         m.route.set('/login');
         e.response.message = null;
+    } else {
+        throw e;
     }
 };
 
 var alertErrorMessage = function(e) {
-    if (e.code == null || e.code == 0) {
-        alert("Lost connection to device. Check that the app is still open.");
+    if (e == null || e.code == null || e.code == 0) {
+        Ping.lostConnection = true;
     } else if (e.response == null || e.message == "null") {
         alert("An internal error occurred");
     } else if (e.response && e.response.message) {
