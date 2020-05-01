@@ -9,6 +9,7 @@ public class ByteBufferBackedInputStream extends InputStream {
     ByteBuffer buf;
 
     public ByteBufferBackedInputStream(ByteBuffer buf) {
+        buf.rewind();
         this.buf = buf;
     }
 

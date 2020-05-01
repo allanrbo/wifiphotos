@@ -554,10 +554,7 @@ public class HttpServer extends NanoHTTPD {
                 String name = "" + id;
 
                 File metaDataFile = new File(dir + "/" + f + ".json");
-                Log.v(MainActivity.TAG, metaDataFile.toString());
                 if (metaDataFile.exists()) {
-                    Log.v(MainActivity.TAG, "exists");
-
                     try {
                         Reader r = new FileReader(metaDataFile);
                         Type stringStringMap = new TypeToken<Map<String, String>>(){}.getType();
@@ -590,9 +587,9 @@ public class HttpServer extends NanoHTTPD {
     private void moveImageToTrash(long imageID) throws IOException {
         Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageID);
 
-        File dir = this.activity.getExternalFilesDir("trash");
-        File file = new File(dir + "/" + imageID + ".jpeg");
-        Log.v(MainActivity.TAG, "Moving to trash: " + file);
+        File trashDir = this.activity.getExternalFilesDir("trash");
+        File trashFile = new File(trashDir + "/" + imageID + ".jpeg");
+        Log.v(MainActivity.TAG, "Moving to trash: " + trashFile);
 
         // Copy meta data to trash directory.
         Cursor cur = this.activity.getContentResolver().query(contentUri, null, null, null, null);
@@ -609,18 +606,38 @@ public class HttpServer extends NanoHTTPD {
                 vals.put(cur.getColumnName(colIdx), cur.getString(colIdx));
             }
         }
+        String filePath = null;
+        try {
+            filePath = cur.getString(cur.getColumnIndex(MediaStore.Images.Media.DATA));
+        } catch(Exception e) {
+        }
         cur.close();
 
-        OutputStream out = new FileOutputStream(file + ".json");
+        OutputStream out = new FileOutputStream(trashFile + ".json");
         out.write(this.gson.toJson(vals).getBytes());
         out.close();
 
-        // Copy actual JPEG to trash directory.
-        InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
-        out = new FileOutputStream(file);
-        HttpServer.copyStream(in, out);
-        out.close();
-        in.close();
+        // Move actual JPEG to trash directory.
+        // Try first to just move the file. This may stop working at some point, since the MediaStore.Images.Media.DATA is deprecated.
+        boolean moveSuccess = false;
+        try {
+            if (filePath != null) {
+                Log.v(MainActivity.TAG, "Doing file system move from " + filePath + " to " + trashFile);
+                moveSuccess = (new File(filePath)).renameTo(trashFile);
+            }
+        } catch (Exception e) {
+            Log.v(MainActivity.TAG, Log.getStackTraceString(e));
+        }
+
+        // Fall back to copying via streams if the file system move failed.
+        if (!moveSuccess) {
+            Log.v(MainActivity.TAG, "Falling back to stream copying image " + imageID + " rather than file system move");
+            InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
+            out = new FileOutputStream(trashFile);
+            HttpServer.copyStream(in, out);
+            out.close();
+            in.close();
+        }
 
         this.activity.getContentResolver().delete(contentUri, null, null);
     }
@@ -642,13 +659,13 @@ public class HttpServer extends NanoHTTPD {
     }
 
     private void restoreImageFromTrash(long imageID) throws IOException {
-        File dir = this.activity.getExternalFilesDir("trash");
-        File file = new File(dir + "/" + imageID + ".jpeg");
-        Log.v(MainActivity.TAG, "Restoring from trash: " + file);
+        File trashDir = this.activity.getExternalFilesDir("trash");
+        File trashFile = new File(trashDir + "/" + imageID + ".jpeg");
+        Log.v(MainActivity.TAG, "Restoring from trash: " + trashFile);
 
         // Read meta data from meta data file in trash directory.
         Map<String,String> vals = new HashMap<>();
-        File metaDataFile = new File(dir + "/" + imageID + ".jpeg.json");
+        File metaDataFile = new File(trashDir + "/" + imageID + ".jpeg.json");
         if (metaDataFile.exists()) {
             try {
                 Reader r = new FileReader(metaDataFile);
@@ -656,7 +673,7 @@ public class HttpServer extends NanoHTTPD {
                 vals = this.gson.fromJson(r, stringStringMap);
                 r.close();
             } catch (Exception e) {
-                // TODO
+                // The meta data file was broken. Nothing we can do about this.
             }
         }
 
@@ -669,16 +686,32 @@ public class HttpServer extends NanoHTTPD {
         // Insert meta data.
         Uri contentUri = this.activity.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
 
-        // Write image.
-        OutputStream out = this.activity.getContentResolver().openOutputStream(contentUri);
-        InputStream in = new FileInputStream(file);
-        HttpServer.copyStream(in, out);
-        in.close();
-        out.close();
+        // Move actual JPEG out of trash directory.
+        // Try first to just move the file. This may stop working at some point, since the MediaStore.Images.Media.DATA is deprecated.
+        boolean moveSuccess = false;
+        try {
+            String filePath = vals.get(MediaStore.Images.Media.DATA);
+            if (filePath != null) {
+                Log.v(MainActivity.TAG, "Doing file system move from " + trashFile + " to " + filePath);
+                moveSuccess = trashFile.renameTo(new File(filePath));
+            }
+        } catch (Exception e) {
+            Log.v(MainActivity.TAG, Log.getStackTraceString(e));
+        }
+
+        // Fall back to copying via streams if the file system move failed.
+        if (!moveSuccess) {
+            Log.v(MainActivity.TAG, "Falling back to stream copying image " + imageID + " rather than file system move");
+            OutputStream out = this.activity.getContentResolver().openOutputStream(contentUri);
+            InputStream in = new FileInputStream(trashFile);
+            HttpServer.copyStream(in, out);
+            in.close();
+            out.close();
+        }
 
         // Delete image and meta data file from trash directory now that it has been restored.
-        if (file.exists()) {
-            file.delete();
+        if (trashFile.exists()) {
+            trashFile.delete();
         }
         if (metaDataFile.exists()) {
             metaDataFile.delete();
