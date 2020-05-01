@@ -3,7 +3,6 @@ var ImageGrid = {
     imageSize: 0,
     selectedImageIDs: [],
     shouldScrollToTimestamp: false,
-    shouldScrollToTimestamp2: 0,
     scrolledToTimestamp: 0,
     previouslyViewedCollection: 0,
     previouslyViewedScrolledToTimestamp: 0,
@@ -55,7 +54,12 @@ var ImageGrid = {
                 m("div", "Lost connection to device. Check that the app is still open."),
                 m("button", {
                     onclick: function() {
-                        Ping.ping();
+                        Ping.ping()
+                        .then(function() {
+                            ImageGrid.shouldScrollToTimestamp = true;
+                            Image.list = [];
+                            Image.loadList(Bucket.currentId);
+                        });
                     }
                 }, "Retry")
             ]);
@@ -362,6 +366,7 @@ var ImageGrid = {
                                 Bucket.currentId = e.target.value;
                                 localStorage.setItem("bucketId", Bucket.currentId);
                                 ImageGrid.selectedImageIDs = [];
+                                ImageGrid.scrolledToTimestamp = 0;
                                 Image.loadList(Bucket.currentId);
                             },
                         },
