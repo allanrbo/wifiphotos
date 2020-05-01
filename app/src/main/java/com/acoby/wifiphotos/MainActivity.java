@@ -14,10 +14,8 @@ import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
@@ -51,14 +49,14 @@ public class MainActivity extends AppCompatActivity {
         TextView instruction1Txt = findViewById(R.id.instruction1);
         TextView instruction2Txt = findViewById(R.id.instruction2);
         TextView ipAddrTxt = findViewById(R.id.ipAddr);
-        if (ip == 0) {
-            instruction1Txt.setVisibility(View.GONE);
-            instruction2Txt.setVisibility(View.GONE);
-            ipAddrTxt.setText("Please connect device to Wi-Fi.");
-        } else {
+        if (ip != 0 || DebugFeatures.BIND_ANY_INTERFACE) {
             instruction1Txt.setVisibility(View.VISIBLE);
             instruction2Txt.setVisibility(View.VISIBLE);
             ipAddrTxt.setText("http://" + ipAddress + ":8080");
+        } else {
+            instruction1Txt.setVisibility(View.GONE);
+            instruction2Txt.setVisibility(View.GONE);
+            ipAddrTxt.setText("Please connect device to Wi-Fi.");
         }
 
         // Remove the graphic in landscape mode, to ensure room for the text.
@@ -83,11 +81,11 @@ public class MainActivity extends AppCompatActivity {
         try {
             this.imageResizer = new ImageResizer(this);
 
-            if (DebugFeatures.COMPILE_WITH_DEBUG_FEATURES) {
+            if (DebugFeatures.BIND_ANY_INTERFACE) {
                 ipAddress = null; // To bind to any interface and not just the Wi-Fi.
             }
 
-            if (ip != 0 || DebugFeatures.COMPILE_WITH_DEBUG_FEATURES) {
+            if (ip != 0 || DebugFeatures.BIND_ANY_INTERFACE) {
                 Log.v(TAG, "Starting HTTP server");
                 this.httpServer = new HttpServer(this, this.imageResizer, ipAddress);
                 this.httpServer.start();

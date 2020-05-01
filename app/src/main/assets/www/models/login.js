@@ -37,6 +37,8 @@ var Login = {
             if (e.status == "allow") {
                 Login.loginDenied = false;
             }
+
+            Ping.lostConnection = false;
        });
     }
 }

@@ -26,6 +26,7 @@ var LoginView = {
         Login.blockingLogin()
         .then(function(e) {
             if (!Login.loginDenied) {
+                ImageGrid.shouldScrollToTimestamp = true;
                 m.route.set("/");
             }
        });

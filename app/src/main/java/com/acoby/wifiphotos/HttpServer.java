@@ -102,7 +102,7 @@ public class HttpServer extends NanoHTTPD {
     }
 
     private Response addCorsHeaders(Response r) {
-        if (DebugFeatures.COMPILE_WITH_DEBUG_FEATURES) {
+        if (DebugFeatures.CORS_ALLOW_ALL) {
             r.addHeader("Access-Control-Allow-Origin", "*");
             r.addHeader("Access-Control-Max-Age", "86400");
             r.addHeader("Access-Control-Allow-Methods", "*");
@@ -216,7 +216,7 @@ public class HttpServer extends NanoHTTPD {
         }
 
         // All endpoints below require that requests are authenticated (unless compiled with debug features).
-        if (!DebugFeatures.COMPILE_WITH_DEBUG_FEATURES) {
+        if (!DebugFeatures.SKIP_AUTH) {
             String authToken = session.getCookies().read("authtoken");
             if (authToken == null) {
                 return this.newJsonMsgResponse(Response.Status.FORBIDDEN, "unauthorized", "authtoken cookie required");
@@ -371,7 +371,7 @@ public class HttpServer extends NanoHTTPD {
         /*
          * Clear cache endpoint.
          */
-        if (DebugFeatures.COMPILE_WITH_DEBUG_FEATURES) {
+        if (DebugFeatures.CLEAR_CACHE_ENDPOINT) {
             if (uri.equals("/api/clearcache")) {
                 if (session.getMethod() == Method.POST) {
                     try {

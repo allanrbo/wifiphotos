@@ -141,7 +141,7 @@ var ImageGrid = {
         }
 
         // Only after the image list is loaded we are done with trying to scroll back to the image after the scrolledToTimestamp timestamp.
-        if (Image.listLoaded) {
+        if (Image.listLoaded && Image.list.length > 0) {
             ImageGrid.shouldScrollToTimestamp = false;
         }
 
