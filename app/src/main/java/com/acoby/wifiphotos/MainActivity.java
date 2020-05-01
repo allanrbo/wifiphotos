@@ -3,6 +3,7 @@ package com.acoby.wifiphotos;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -10,9 +11,13 @@ import android.os.Bundle;
 import android.os.PowerManager;
 import android.text.format.Formatter;
 import android.util.Log;
+import android.view.View;
 import android.view.WindowManager;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
@@ -32,18 +37,38 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         ensurePermissionsGranted();
-
-        WifiManager wifiMgr = (WifiManager) this.getApplicationContext().getSystemService(WIFI_SERVICE);
-        WifiInfo wifiInfo = wifiMgr.getConnectionInfo();
-        int ip = wifiInfo.getIpAddress();
-        String ipAddress = Formatter.formatIpAddress(ip);
-        TextView tv = findViewById(R.id.ipAddr);
-        tv.setText("http://" + ipAddress + ":8080");
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+
+        // Display IP address in phone UI.
+        WifiManager wifiMgr = (WifiManager) this.getApplicationContext().getSystemService(WIFI_SERVICE);
+        WifiInfo wifiInfo = wifiMgr.getConnectionInfo();
+        int ip = wifiInfo.getIpAddress();
+        String ipAddress = Formatter.formatIpAddress(ip);
+        TextView instruction1Txt = findViewById(R.id.instruction1);
+        TextView instruction2Txt = findViewById(R.id.instruction2);
+        TextView ipAddrTxt = findViewById(R.id.ipAddr);
+        if (ip == 0) {
+            instruction1Txt.setVisibility(View.GONE);
+            instruction2Txt.setVisibility(View.GONE);
+            ipAddrTxt.setText("Please connect device to Wi-Fi.");
+        } else {
+            instruction1Txt.setVisibility(View.VISIBLE);
+            instruction2Txt.setVisibility(View.VISIBLE);
+            ipAddrTxt.setText("http://" + ipAddress + ":8080");
+        }
+
+        // Remove the graphic in landscape mode, to ensure room for the text.
+        ImageView imageView = findViewById(R.id.imageView);
+        int orientation = getResources().getConfiguration().orientation;
+        if (Configuration.ORIENTATION_LANDSCAPE == orientation) {
+            imageView.setVisibility(View.GONE);
+        } else {
+            imageView.setVisibility(View.VISIBLE);
+        }
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
@@ -58,9 +83,15 @@ public class MainActivity extends AppCompatActivity {
         try {
             this.imageResizer = new ImageResizer(this);
 
-            Log.v(TAG,"Starting HTTP server");
-            this.httpServer = new HttpServer(this, this.imageResizer);
-            this.httpServer.start();
+            if (DebugFeatures.COMPILE_WITH_DEBUG_FEATURES) {
+                ipAddress = null; // To bind to any interface and not just the Wi-Fi.
+            }
+
+            if (ip != 0 || DebugFeatures.COMPILE_WITH_DEBUG_FEATURES) {
+                Log.v(TAG, "Starting HTTP server");
+                this.httpServer = new HttpServer(this, this.imageResizer, ipAddress);
+                this.httpServer.start();
+            }
         } catch(Exception e) {
             Log.v(TAG, Log.getStackTraceString(e));
         }

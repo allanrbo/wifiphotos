@@ -63,8 +63,8 @@ public class HttpServer extends NanoHTTPD {
 
     boolean threadPrioritySet = false;
 
-    public HttpServer(AppCompatActivity activity, ImageResizer imageResizer) throws IOException {
-        super(8080);
+    public HttpServer(AppCompatActivity activity, ImageResizer imageResizer, String hostname) throws IOException {
+        super(hostname, 8080);
         this.activity = activity;
         this.gson = new Gson();
         this.imageResizer = imageResizer;
