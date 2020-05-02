@@ -71,8 +71,7 @@ public class ImageResizer {
 
     public InputStream getResizedImageFile(long imageID, boolean isTrash, int size) throws IOException {
         // Try first to get from cache.
-        long origFileSize = this.getImageFileSize(imageID, isTrash);
-        String cacheKey = imageID + "-" + origFileSize + "-" + size;
+        String cacheKey = this.getCacheKey(imageID, isTrash, size);
         if (!DebugFeatures.DISABLE_CACHING) {
             DiskLruCache.Snapshot snapshot = this.diskLruCache.get(cacheKey);
             if (snapshot != null) {
@@ -339,9 +338,14 @@ public class ImageResizer {
         this.diskLruCache = DiskLruCache.open(cacheDir, 1,1, cacheMaxSize);
     }
 
+    public String getCacheKey(long imageID, boolean isTrash, int size) {
+        long origFileSize = this.getImageFileSize(imageID, isTrash);
+        return imageID + "-" + origFileSize + "-" + size;
+    }
+
     // Creates a unique subdirectory of the designated app cache directory. Tries to use external
     // but if not mounted, falls back on internal storage.
-    public File getDiskCacheDir(String uniqueName) {
+    private File getDiskCacheDir(String uniqueName) {
         // Check if media is mounted or storage is built-in, if so, try and use external cache dir
         // otherwise use internal cache dir
         boolean useExternal = Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState()) || !isExternalStorageRemovable();

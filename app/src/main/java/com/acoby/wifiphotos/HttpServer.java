@@ -327,13 +327,26 @@ public class HttpServer extends NanoHTTPD {
                     }
                 }
 
+                String etag = "\"" + this.imageResizer.getCacheKey(imageID, isTrash, size).replace("-","") + "\"";
+                String ifNoneMatch = session.getHeaders().get("if-none-match");
+                if (ifNoneMatch != null && ifNoneMatch.equals(etag)) {
+                    Response r = this.newFixedLengthResponse(Response.Status.NOT_MODIFIED, MIME_HTML, "");
+                    r.addHeader("ETag", etag);
+                    return r;
+                }
+
                 try {
+                    InputStream inputStream = null;
                     if (full) {
-                        return this.newChunkedResponse(Response.Status.OK, "image/jpeg", this.imageResizer.openOrigImage(imageID, isTrash));
+                        inputStream = this.imageResizer.openOrigImage(imageID, isTrash);
+                    } else {
+                        inputStream = imageResizer.getResizedImageFile(imageID, isTrash, size);
                     }
 
-                    InputStream inputStream = imageResizer.getResizedImageFile(imageID, isTrash, size);
-                    return this.newChunkedResponse(Response.Status.OK, "image/jpeg", inputStream );
+                    Response r = this.newChunkedResponse(Response.Status.OK, "image/jpeg", inputStream);
+                    r.addHeader("ETag", etag);
+                    r.addHeader("Cache-Control", "max-age=120");
+                    return r;
                 } catch (IOException e) {
                     Log.v(MainActivity.TAG, Log.getStackTraceString(e));
                     return this.apiNotFoundResponse;
