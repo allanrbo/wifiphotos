@@ -1,9 +1,9 @@
 package com.acoby.wifiphotos;
 
+import android.content.ContentUris;
 import android.database.Cursor;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Point;
+import android.net.Uri;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.renderscript.Allocation;
@@ -48,7 +48,13 @@ public class ImageResizer {
 
         File cacheDir = this.getDiskCacheDir("wifiphotoscache");
         Log.v(MainActivity.TAG, "Cache dir: " + cacheDir.toString());
-        this.diskLruCache = DiskLruCache.open(cacheDir, 1,1, ImageResizer.cacheMaxSize);
+        try {
+            this.diskLruCache = DiskLruCache.open(cacheDir, 1, 1, ImageResizer.cacheMaxSize);
+        } catch(Exception e) {
+            Log.v(MainActivity.TAG, "Failed to initialize DiskLruCache");
+            Log.v(MainActivity.TAG, Log.getStackTraceString(e));
+            this.diskLruCache = null;
+        }
 
         int maxConcurrency = Runtime.getRuntime().availableProcessors();
         this.semaphore = new Semaphore(maxConcurrency, true);
@@ -151,11 +157,22 @@ public class ImageResizer {
         this.concurrentCount.decrementAndGet();
         this.semaphore.release();
 
-        DiskLruCache.Editor editor = this.diskLruCache.edit(cacheKey);
-        OutputStream out = editor.newOutputStream(0);
-        Channels.newChannel(out).write(resizedImage);
-        out.close();
-        editor.commit();
+        if (this.diskLruCache != null) {
+            OutputStream out = null;
+            try {
+                DiskLruCache.Editor editor = this.diskLruCache.edit(cacheKey);
+                out = editor.newOutputStream(0);
+                Channels.newChannel(out).write(resizedImage);
+                out.close();
+                editor.commit();
+            } catch (Exception e) {
+                Log.v(MainActivity.TAG, "Failed to write to DiskLruCache");
+                Log.v(MainActivity.TAG, Log.getStackTraceString(e));
+                if (out != null) {
+                    out.close();
+                }
+            }
+        }
 
         return new ByteBufferBackedInputStream(resizedImage);
     }
@@ -184,31 +201,33 @@ public class ImageResizer {
         return new int[] {dstWidth, dstHeight};
     }
 
-    private InputStream openOrigImage(long imageID, boolean isTrash) throws FileNotFoundException {
+    public InputStream openOrigImage(long imageID, boolean isTrash) throws FileNotFoundException {
         if (isTrash) {
             File dir = this.activity.getExternalFilesDir("trash");
             return new FileInputStream(dir + "/" + imageID + ".jpeg");
         }
 
-        // Initially tried to use the more correct getContentResolver().openInputStream(contentUri) here, but it sometimes hangs for takes several seconds.
+        InputStream in;
+        Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageID);
 
-        // Query the Android MediaStore API.
-        String[] projection = new String[]{MediaStore.Images.Media._ID, MediaStore.Images.Media.DATA};
-        String selection = MediaStore.Images.Media._ID + " == ?";
-        String[] selectionArgs = {imageID + ""};
-        String sortOrder = MediaStore.Images.Media.DATE_TAKEN + " DESC";
-        Cursor cur = this.activity.getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, sortOrder);
-        String fileName = null;
-        if (cur.moveToFirst()) {
-            fileName = cur.getString(cur.getColumnIndexOrThrow(MediaStore.Images.Media.DATA));
+        // It appears to be significantly faster to use FileInputStream rather than getContentResolver().openInputStream(), even though this is deprecated.
+        // openInputStream() sometimes takes several seconds.
+        // Therefore try FileInputStream first and fall back to openInputStream().
+        try {
+            Cursor cur = this.activity.getContentResolver().query(contentUri, null, null, null, null);
+            cur.moveToFirst();
+            String filePath = null;
+            try {
+                filePath = cur.getString(cur.getColumnIndex(MediaStore.Images.Media.DATA));
+            } catch(Exception e) {
+            }
+            cur.close();
+            in = new FileInputStream(filePath);
+        } catch (Exception e) {
+            in = this.activity.getContentResolver().openInputStream(contentUri);
         }
-        cur.close();
 
-        if (fileName == null) {
-            throw new FileNotFoundException();
-        }
-
-        return new FileInputStream(fileName);
+        return in;
     }
 
     private long getImageSize(long imageID, boolean isTrash) {

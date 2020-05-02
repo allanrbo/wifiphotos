@@ -118,6 +118,30 @@ public class HttpServer extends NanoHTTPD {
     private Response serveApi(IHTTPSession session) {
         String uri = session.getUri();
 
+        /*
+         * Clear cache endpoint.
+         */
+        if (DebugFeatures.CLEAR_CACHE_ENDPOINT) {
+            if (uri.equals("/api/clearcache")) {
+                if (session.getMethod() == Method.POST) {
+                    try {
+                        HashMap<String, String> map = new HashMap<String, String>();
+                        session.parseBody(map);
+                    } catch (Exception e) {
+                    }
+
+                    try {
+                        this.imageResizer.deleteCacheAll();
+                    } catch(Exception e) {
+                        Log.v(MainActivity.TAG, Log.getStackTraceString(e));
+                    }
+                    return this.addNoCacheHeaders(this.newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_HTML, "Resized photo cache cleared<br/><form method=\"post\"><input type=\"submit\" value=\"Clear resized photo cache\"/></form>"));
+                } else {
+                    return this.newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_HTML, "<form method=\"post\"><input type=\"submit\" value=\"Clear resized photo cache\"/></form>");
+                }
+            }
+        }
+
         String body = null;
         if (session.getMethod() == Method.POST) {
             // Read the request body.
@@ -297,15 +321,7 @@ public class HttpServer extends NanoHTTPD {
 
                 try {
                     if (full) {
-                        InputStream in;
-                        if (isTrash) {
-                            File dir = this.activity.getExternalFilesDir("trash");
-                            in = new FileInputStream(dir + "/" + imageID + ".jpeg");
-                        } else {
-                            Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageID);
-                            in = this.activity.getContentResolver().openInputStream(contentUri);
-                        }
-                        return this.newChunkedResponse(Response.Status.OK, "image/jpeg", in);
+                        return this.newChunkedResponse(Response.Status.OK, "image/jpeg", this.imageResizer.openOrigImage(imageID, isTrash));
                     }
 
                     InputStream inputStream = imageResizer.getResizedImageFile(imageID, isTrash, size);
@@ -332,6 +348,9 @@ public class HttpServer extends NanoHTTPD {
                         this.moveImageToTrash(imageID);
                     } catch (Exception e) {
                         Log.v(MainActivity.TAG, Log.getStackTraceString(e));
+                        if (e.getMessage().contains("No space left on device")) {
+                            return this.newJsonMsgResponse(Response.Status.INTERNAL_ERROR, "error", "Error while moving image to trash. No space left on device.");
+                        }
                         return this.newJsonMsgResponse(Response.Status.INTERNAL_ERROR, "error", "Error while moving image to trash");
                     }
                 }
@@ -363,25 +382,11 @@ public class HttpServer extends NanoHTTPD {
                     this.restoreImageFromTrash(imageID);
                     return this.newJsonMsgResponse(Response.Status.OK, "ok", null);
                 } catch (Exception e) {
-                    return this.newJsonMsgResponse(Response.Status.INTERNAL_ERROR, "error", "Error while restoring image from trash");
-                }
-            }
-        }
-
-        /*
-         * Clear cache endpoint.
-         */
-        if (DebugFeatures.CLEAR_CACHE_ENDPOINT) {
-            if (uri.equals("/api/clearcache")) {
-                if (session.getMethod() == Method.POST) {
-                    try {
-                        this.imageResizer.deleteCacheAll();
-                    } catch(Exception e) {
-                        Log.v(MainActivity.TAG, Log.getStackTraceString(e));
+                    Log.v(MainActivity.TAG, Log.getStackTraceString(e));
+                    if (e.getMessage().contains("No space left on device")) {
+                        return this.newJsonMsgResponse(Response.Status.INTERNAL_ERROR, "error", "Error while restoring image from trash. No space left on device.");
                     }
-                    return this.addNoCacheHeaders(this.newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_HTML, "Resized photo cache cleared<br/><form method=\"post\"><input type=\"submit\" value=\"Clear resized photo cache\"/></form>"));
-                } else {
-                    return this.newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_HTML, "<form method=\"post\"><input type=\"submit\" value=\"Clear resized photo cache\"/></form>");
+                    return this.newJsonMsgResponse(Response.Status.INTERNAL_ERROR, "error", "Error while restoring image from trash");
                 }
             }
         }
@@ -589,6 +594,7 @@ public class HttpServer extends NanoHTTPD {
 
         File trashDir = this.activity.getExternalFilesDir("trash");
         File trashFile = new File(trashDir + "/" + imageID + ".jpeg");
+        File trashMetaDataFile = new File(trashFile + ".json");
         Log.v(MainActivity.TAG, "Moving to trash: " + trashFile);
 
         // Copy meta data to trash directory.
@@ -613,7 +619,7 @@ public class HttpServer extends NanoHTTPD {
         }
         cur.close();
 
-        OutputStream out = new FileOutputStream(trashFile + ".json");
+        OutputStream out = new FileOutputStream(trashMetaDataFile);
         out.write(this.gson.toJson(vals).getBytes());
         out.close();
 
@@ -631,12 +637,18 @@ public class HttpServer extends NanoHTTPD {
 
         // Fall back to copying via streams if the file system move failed.
         if (!moveSuccess) {
-            Log.v(MainActivity.TAG, "Falling back to stream copying image " + imageID + " rather than file system move");
-            InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
-            out = new FileOutputStream(trashFile);
-            HttpServer.copyStream(in, out);
-            out.close();
-            in.close();
+            try {
+                Log.v(MainActivity.TAG, "Falling back to stream copying image " + imageID + " rather than file system move");
+                InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
+                out = new FileOutputStream(trashFile);
+                HttpServer.copyStream(in, out);
+                out.close();
+                in.close();
+            } catch(Exception e) {
+                trashMetaDataFile.delete();
+                trashFile.delete();
+                throw e;
+            }
         }
 
         this.activity.getContentResolver().delete(contentUri, null, null);
@@ -658,7 +670,7 @@ public class HttpServer extends NanoHTTPD {
         this.imageResizer.deleteCache(imageID);
     }
 
-    private void restoreImageFromTrash(long imageID) throws IOException {
+    private void restoreImageFromTrash(long imageID) throws Exception {
         File trashDir = this.activity.getExternalFilesDir("trash");
         File trashFile = new File(trashDir + "/" + imageID + ".jpeg");
         Log.v(MainActivity.TAG, "Restoring from trash: " + trashFile);
@@ -685,6 +697,9 @@ public class HttpServer extends NanoHTTPD {
 
         // Insert meta data.
         Uri contentUri = this.activity.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+        if (contentUri == null) {
+            throw new Exception("failed to insert meta data");
+        }
 
         // Move actual JPEG out of trash directory.
         // Try first to just move the file. This may stop working at some point, since the MediaStore.Images.Media.DATA is deprecated.
@@ -701,13 +716,23 @@ public class HttpServer extends NanoHTTPD {
 
         // Fall back to copying via streams if the file system move failed.
         if (!moveSuccess) {
-            Log.v(MainActivity.TAG, "Falling back to stream copying image " + imageID + " rather than file system move");
-            OutputStream out = this.activity.getContentResolver().openOutputStream(contentUri);
-            InputStream in = new FileInputStream(trashFile);
-            HttpServer.copyStream(in, out);
-            in.close();
-            out.close();
+            try {
+                Log.v(MainActivity.TAG, "Falling back to stream copying image " + imageID + " rather than file system move");
+                OutputStream out = this.activity.getContentResolver().openOutputStream(contentUri);
+                InputStream in = new FileInputStream(trashFile);
+                HttpServer.copyStream(in, out);
+                in.close();
+                out.close();
+            } catch (Exception e) {
+                // We failed to move the actual JPEG from trash to the collection, so we will remove the meta data again.
+                if (trashFile.exists()) {
+                    this.activity.getContentResolver().delete(contentUri, null, null);
+                }
+                throw e;
+            }
         }
+
+
 
         // Delete image and meta data file from trash directory now that it has been restored.
         if (trashFile.exists()) {

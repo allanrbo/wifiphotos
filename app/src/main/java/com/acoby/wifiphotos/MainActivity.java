@@ -68,12 +68,15 @@ public class MainActivity extends AppCompatActivity {
             imageView.setVisibility(View.VISIBLE);
         }
 
+        // Keeping screen on because app only runs HTTP server when screen is on. This is for security, to decrease the chance of running the server accidentally.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        // Taking wake lock. This is because the HTTP server will do CPU intensive work (image resizing) for the remote client, even though the app screen is not being used interactively.
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
         this.wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"wifiphotos.acoby.com::Wakelock");
         this.wakeLock.acquire();
 
+        // Taking Wi-Fi lock. This is to ensure best HTTP server transfer rates.
         WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         this.wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF , "wifiphotos.acoby.com::WifiLock");
         this.wifiLock.acquire();
