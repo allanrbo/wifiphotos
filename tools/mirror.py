@@ -8,10 +8,26 @@ from shutil import copyfileobj
 from urllib2 import Request, urlopen
 import json
 import os
+import time
+import random
+import string
 
 def mirror(address, localDir, collection, deleteAndOverwrite):
-    buckets = json.loads(urlopen("http://" + address + "/api/buckets").read())
+    # Log in.
+    authtoken = ''.join(random.choice(string.ascii_lowercase) for i in range(50))
+    pin = random.randint(1000,9999)
+    print("Press allow on your device if you see PIN " + str(pin))
+    req = Request("http://" + address + "/api/login", data=json.dumps({"pin": pin, "token": authtoken}))
+    req.get_method = lambda: "POST"
+    req.add_header("Content-Type", "application/json")
+    urlopen(req).read()
 
+    # Get all buckets.
+    req = Request("http://" + address + "/api/buckets")
+    req.add_header("Cookie", "authtoken=" + authtoken)
+    buckets = json.loads(urlopen(req).read())
+
+    # Get ID of bucket we are interested in.
     bucketId = 0
     for b in buckets:
         if b["displayName"] == collection:
@@ -21,13 +37,17 @@ def mirror(address, localDir, collection, deleteAndOverwrite):
     if bucketId == 0:
         "Could not find collection " + collection
 
-    images = json.loads(urlopen("http://" + address + "/api/buckets/" + str(bucketId)).read())
-    remoteFiles = []
+    # Get all images in bucket.
+    req = Request("http://" + address + "/api/buckets/" + str(bucketId))
+    req.add_header("Cookie", "authtoken=" + authtoken)
+    images = json.loads(urlopen(req).read())
+
     localFiles = [f for f in listdir(localDir) if isfile(join(localDir, f))]
 
     log("Images remotely: " + str(len(images)))
     log("Images locally: " + str(len(localFiles)))
 
+    remoteFiles = []
     for image in images:
         remoteFiles.append(image["name"])
         path = join(localDir, image["name"])
@@ -36,10 +56,18 @@ def mirror(address, localDir, collection, deleteAndOverwrite):
         wrongTimestamp = not missing and abs(getmtime(path) - image["dateModified"]) > 4  # Windows may have some granularity issues, so using this tolerance
         if missing or (deleteAndOverwrite and (wrongSize or wrongTimestamp)):
             log("Downloading " + image["name"])
-            req = urlopen("http://" + address + "/api/images/" + str(image["imageId"]) + "?size=full")
+            req = Request("http://" + address + "/api/images/" + str(image["imageId"]) + "?size=full")
+            req.add_header("Cookie", "authtoken=" + authtoken)
+            start = time.time()
+            length = 0
+            r = urlopen(req)
             with open(path, 'wb') as fp:
-                copyfileobj(req, fp)
-            req.close()
+                copyfileobj(r, fp)
+                length = fp.tell()
+            r.close()
+            end = time.time()
+            mbPerSec = length/1024.0/1024.0 / ((end - start))
+            log("Downloaded with " + "{:.2f}".format(mbPerSec) + " MiB/sec")
             utime(path, (image["dateModified"], image["dateModified"]))
 
     if deleteAndOverwrite:
