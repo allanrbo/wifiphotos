@@ -326,7 +326,7 @@ var ImageGrid = {
                             img = document.createElement("img");
                             imgDiv.appendChild(img);
                             img.src = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "?size=" + ImageGrid.imageSize + extraTimestamp;
-                            img.style = "max-width:" + imgBoxPos.width + "px;max-height:" + imgBoxPos.height + "px;";
+                            img.style = "width:" + imgBoxPos.width + "px;height:" + imgBoxPos.height + "px;";
                             if (img.complete) {
                                 return;
                             } else {
