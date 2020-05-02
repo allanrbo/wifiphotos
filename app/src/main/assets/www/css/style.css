@@ -120,11 +120,24 @@ select {
     line-height: 1.5em;
 }
 
+
+.topbar .control .fa {
+    cursor: pointer;
+}
+
 .topbar .control select {
     vertical-align: 1px;
 }
 
-.topbar #collection {
+.topbar .control.disabled {
+    opacity: 0.5;
+}
+
+.topbar .control.disabled a, .topbar .control.disabled .fa {
+    cursor: default;
+}
+
+.topbar .control #collection {
     width: 20em;
 }
 

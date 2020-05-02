@@ -325,7 +325,7 @@ var ImageGrid = {
 
                             img = document.createElement("img");
                             imgDiv.appendChild(img);
-                            img.src = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "?size=" + ImageGrid.imageSize + extraTimestamp;
+                            img.src = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "/" + imgBoxPos.image.name + "?size=" + ImageGrid.imageSize + extraTimestamp;
                             img.style = "width:" + imgBoxPos.width + "px;height:" + imgBoxPos.height + "px;";
                             if (img.complete) {
                                 return;
@@ -429,6 +429,12 @@ var ImageGrid = {
                         })
                     )
                 ]),
+                m(".control" + (ImageGrid.selectedImageIDs.length != 1 ? ".disabled" : ""), [
+                    m("span.fa.fa-arrows-alt", { onclick: ImageGrid.viewFullRes }
+                    ),
+                    " ",
+                    m("a", { onclick: ImageGrid.viewFullRes }, "View full resolution")
+                ]),
                 !isTrash ? [
                     m(".control", [
                         m("span.fa.fa-trash-o", { onclick: ImageGrid.deleteSelected } ),
@@ -477,7 +483,7 @@ var ImageGrid = {
     deleteSelected: function() {
         // Are we currently viewing the trash directory?
         var isTrash = Bucket.currentId == "trash";
-            if (isTrash) {
+        if (isTrash) {
             var r = confirm("Permanently delete the selected items?");
             if (r != true) {
                 return;
@@ -525,5 +531,23 @@ var ImageGrid = {
         ImageGrid.selectedImageIDs = [];
         Image.list = [];
         Image.loadList(Bucket.currentId);
+    },
+
+    viewFullRes: function() {
+        if (ImageGrid.selectedImageIDs.length != 1) {
+            return;
+        }
+
+        var imageId = ImageGrid.selectedImageIDs[0];
+
+        var name = "";
+        for (var i = 0; i < Image.list.length; i++) {
+            if (Image.list[i].imageId == imageId) {
+                name = Image.list[i].name;
+            }
+        }
+
+        var isTrash = Bucket.currentId == "trash";
+        window.location.href = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "/" + name + "?size=full";
     }
 }

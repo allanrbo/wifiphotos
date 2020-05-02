@@ -56,7 +56,7 @@ public class HttpServer extends NanoHTTPD {
     boolean loginInProgress = false;
 
     Pattern apiBucketContentsRegex = Pattern.compile("/api/buckets/([0-9-]+|trash)");
-    Pattern apiImageRegex = Pattern.compile("/api/images/(trash/)?([0-9-]+)");
+    Pattern apiImageRegex = Pattern.compile("/api/images/(trash/)?([0-9-]+)/(.+)");
 
     Response apiNotFoundResponse;
     Response htmlNotFoundResponse;
@@ -300,6 +300,12 @@ public class HttpServer extends NanoHTTPD {
             try {
                 imageID = Long.parseLong(m.group(2));
             } catch (NumberFormatException e) {
+                return this.apiNotFoundResponse;
+            }
+
+            String name = m.group(3);
+            String expectedName = getImageName(imageID, isTrash);
+            if (expectedName != null && !name.equals(expectedName)) {
                 return this.apiNotFoundResponse;
             }
 
@@ -739,6 +745,36 @@ public class HttpServer extends NanoHTTPD {
         if (metaDataFile.exists()) {
             metaDataFile.delete();
         }
+    }
+
+    private String getImageName(long imageID, boolean isTrash) {
+        if (isTrash) {
+            File dir = this.activity.getExternalFilesDir("trash");
+            File metaDataFile = new File(dir + "/" + imageID + ".jpeg.json");
+            if (!metaDataFile.exists()) {
+                return null;
+            }
+            try {
+                Reader r = new FileReader(metaDataFile);
+                Type stringStringMap = new TypeToken<Map<String, String>>(){}.getType();
+                Map<String,String> vals = this.gson.fromJson(r, stringStringMap);
+                r.close();
+                return vals.get(MediaStore.Images.Media.DISPLAY_NAME);
+            } catch (Exception e) {
+                return null;
+            }
+        }
+
+        Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageID);
+        Cursor cur = this.activity.getContentResolver().query(contentUri, null, null, null, null);
+        cur.moveToFirst();
+        String name = null;
+        try {
+            name = cur.getString(cur.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME));
+        } catch(Exception e) {
+        }
+        cur.close();
+        return name;
     }
 
     private Response newJsonMsgResponse(Response.IStatus httpCode, String status, String msg) {
