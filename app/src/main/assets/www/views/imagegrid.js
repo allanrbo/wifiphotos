@@ -39,7 +39,10 @@ var ImageGrid = {
 
         ImageGrid.imageSize = localStorage.getItem("imageSize");
         if (ImageGrid.imageSize == null) {
-            ImageGrid.imageSize = 600
+            ImageGrid.imageSize = 600;
+            if (window.devicePixelRatio >= 2) {
+                ImageGrid.imageSize = 1000;
+            }
         }
     },
 
@@ -72,7 +75,7 @@ var ImageGrid = {
         var scrollTop = document.documentElement.scrollTop;
         var scrollBottom = scrollTop + window.innerHeight;
 
-        var imgSize = parseInt(ImageGrid.imageSize);
+        var imgSize = Math.floor(parseInt(ImageGrid.imageSize) / window.devicePixelRatio);
         var imgMargin = 3;
         var imgPadding = 8;
         var imgBoxSize = imgMargin + imgPadding + imgSize + imgPadding + imgMargin;
@@ -81,6 +84,9 @@ var ImageGrid = {
 
         var marginTop = 37;
         var marginLeft = Math.floor((docWidth - imgBoxSize * columns) / 2);
+        if (imgSize > docWidth) {
+            marginLeft = 0;
+        }
         var curCol = 0;
         var curRow = 0;
         var imgBoxPositions = {};
@@ -311,7 +317,9 @@ var ImageGrid = {
                                 });
                                 img.addEventListener('error', function(e) {
                                     Ping.ping()
-                                    .then(loadNextImgs);
+                                    .then(function(){
+                                        loadNextImgs();
+                                    });
                                 });
                             }
                         }
@@ -397,7 +405,7 @@ var ImageGrid = {
                                 ImageGrid.scrollHandler();
                             }
                         },
-                        [100,200,300,400,500,600,700,800,900,1000].map(function(s) {
+                        [100,200,300,400,600,900,1000,1400,1800,2200,2600].map(function(s) {
                             return m("option", {value: s, selected: ImageGrid.imageSize == s ? "selected" : ""}, s + " px");
                         })
                     )

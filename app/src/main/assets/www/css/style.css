@@ -108,19 +108,24 @@ select {
     width: 100%;
     background-color: #404040;
     border-bottom: 1px solid #5c5c5c;
-    padding: 0.4em 0.5em 0.2em 0.5em;
+    padding: 0.2em 0.5em 0.1em 0.5em;
     display: flex;
     flex-wrap: wrap;
-}
-
-.topbar #collection {
-    width: 20em;
 }
 
 .topbar .control {
     margin-right: 2em;
     display: inline;
     white-space: nowrap;
+    line-height: 1.5em;
+}
+
+.topbar .control select {
+    vertical-align: 1px;
+}
+
+.topbar #collection {
+    width: 20em;
 }
 
 .login {
