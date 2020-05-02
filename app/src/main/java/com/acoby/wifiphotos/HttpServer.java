@@ -575,8 +575,6 @@ public class HttpServer extends NanoHTTPD {
                         height = Integer.parseInt(vals.get(MediaStore.Images.Media.HEIGHT));
                     } catch (Exception e) {
                         Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-
-                        // TODO
                     }
                 }
 
