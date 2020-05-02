@@ -46,14 +46,16 @@ public class ImageResizer {
 
         this.renderScript = RenderScript.create(this.activity);
 
-        File cacheDir = this.getDiskCacheDir("wifiphotoscache");
-        Log.v(MainActivity.TAG, "Cache dir: " + cacheDir.toString());
-        try {
-            this.diskLruCache = DiskLruCache.open(cacheDir, 1, 1, ImageResizer.cacheMaxSize);
-        } catch(Exception e) {
-            Log.v(MainActivity.TAG, "Failed to initialize DiskLruCache");
-            Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-            this.diskLruCache = null;
+        if (!DebugFeatures.DISABLE_CACHING) {
+            File cacheDir = this.getDiskCacheDir("wifiphotoscache");
+            Log.v(MainActivity.TAG, "Cache dir: " + cacheDir.toString());
+            try {
+                this.diskLruCache = DiskLruCache.open(cacheDir, 1, 1, ImageResizer.cacheMaxSize);
+            } catch(Exception e) {
+                Log.v(MainActivity.TAG, "Failed to initialize DiskLruCache");
+                Log.v(MainActivity.TAG, Log.getStackTraceString(e));
+                this.diskLruCache = null;
+            }
         }
 
         int maxConcurrency = Runtime.getRuntime().availableProcessors();
@@ -69,11 +71,13 @@ public class ImageResizer {
 
     public InputStream getResizedImageFile(long imageID, boolean isTrash, int size) throws IOException {
         // Try first to get from cache.
-        long origFileSize = this.getImageSize(imageID, isTrash);
+        long origFileSize = this.getImageFileSize(imageID, isTrash);
         String cacheKey = imageID + "-" + origFileSize + "-" + size;
-        DiskLruCache.Snapshot snapshot = this.diskLruCache.get(cacheKey);
-        if (snapshot != null) {
-            return snapshot.getInputStream(0);
+        if (!DebugFeatures.DISABLE_CACHING) {
+            DiskLruCache.Snapshot snapshot = this.diskLruCache.get(cacheKey);
+            if (snapshot != null) {
+                return snapshot.getInputStream(0);
+            }
         }
 
         // Limit how many images can concurrently be resizing, in order to not hit OutOfMemoryError.
@@ -157,7 +161,7 @@ public class ImageResizer {
         this.concurrentCount.decrementAndGet();
         this.semaphore.release();
 
-        if (this.diskLruCache != null) {
+        if (this.diskLruCache != null && !DebugFeatures.DISABLE_CACHING) {
             OutputStream out = null;
             try {
                 DiskLruCache.Editor editor = this.diskLruCache.edit(cacheKey);
@@ -230,7 +234,7 @@ public class ImageResizer {
         return in;
     }
 
-    private long getImageSize(long imageID, boolean isTrash) {
+    private long getImageFileSize(long imageID, boolean isTrash) {
         if (isTrash) {
             File dir = this.activity.getExternalFilesDir("trash");
             File f = new File(dir + "/" + imageID + ".jpeg");
@@ -311,11 +315,14 @@ public class ImageResizer {
     }
 
     public void deleteCache(long imageId) throws IOException {
+        if (this.diskLruCache == null) {
+            return;
+        }
+
         for (File f : this.diskLruCache.getDirectory().listFiles()) {
             String name = f.getName();
             if (name.startsWith(imageId + "-")) {
                 String key = f.getName().replaceAll("\\.\\d+$", "");
-                Log.v(MainActivity.TAG, key);
                 DiskLruCache.Snapshot snapshot = this.diskLruCache.get(key);
                 if (snapshot != null) {
                     DiskLruCache.Editor editor = snapshot.edit();

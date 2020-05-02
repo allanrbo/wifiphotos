@@ -4,8 +4,7 @@ var Ping = {
     ping: function() {
         return m.request({
             method: "GET",
-            url: apiUrl + "/ping",
-            config: xhrConfig
+            url: apiUrl + "/ping"
         })
         .then(function() {
             Ping.lostConnection = false;

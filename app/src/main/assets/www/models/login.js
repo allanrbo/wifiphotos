@@ -28,8 +28,7 @@ var Login = {
         return m.request({
             method: "POST",
             url: apiUrl + "/login",
-            body: { "pin": Login.pin, "token": Login.token },
-            config: xhrConfig
+            body: { "pin": Login.pin, "token": Login.token }
         })
         .catch(alertErrorMessage)
         .then(function(e) {

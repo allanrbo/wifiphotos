@@ -28,8 +28,7 @@ var Image = {
 
         return m.request({
             method: "DELETE",
-            url: url,
-            config: xhrConfig
+            url: url
         })
         .catch(handleUnauthorized)
         .catch(alertErrorMessage);
@@ -39,8 +38,7 @@ var Image = {
         return m.request({
             method: "POST",
             url: apiUrl + "/images/trash/" + imageId,
-            body: { "action": "restore" },
-            config: xhrConfig
+            body: { "action": "restore" }
         })
         .catch(handleUnauthorized)
         .catch(alertErrorMessage);

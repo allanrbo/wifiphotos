@@ -291,8 +291,25 @@ var ImageGrid = {
                         var drawImgIfNeeded = function(imgDiv) {
                             var imageId = imgDiv.dataset.imageId;
                             var alreadyHasImg = false;
+                            var recreatingBroken = false;
                             for (var j = 0; j < imgDiv.children.length; j++) {
                                 if (imgDiv.children[j].tagName == "IMG") {
+                                    // Is this a broken image element?
+                                    // This is a workaround for a bug that I have not yet solved, where the server sometimes sends incomplete images.
+                                    if (imgDiv.children[j].complete && (imgDiv.children[j].naturalWidth == 0 || imgDiv.children[j].naturalHeight == 0)) {
+                                        if (imgDiv.dataset.recreatingInProgress == "1") {
+                                        } else if (imgDiv.dataset.retries == undefined) {
+                                            imgDiv.dataset.retries = 1;
+                                        } else if (imgDiv.dataset.retries++ > 5) {
+                                            alreadyHasImg = true;
+                                            break;
+                                        }
+                                        console.log("Found broken image " + imgDiv.dataset.imageId + ". Recreating img element.");
+                                        imgDiv.removeChild(imgDiv.children[j]);
+                                        recreatingBroken = true;
+                                        break;
+                                    }
+
                                     alreadyHasImg = true;
                                     break;
                                 }
@@ -304,15 +321,17 @@ var ImageGrid = {
 
                             var imgBoxPos = imgBoxPositions[imageId];
 
+                            var extraTimestamp = recreatingBroken ? "&ts=" + (new Date().getTime()) : "";
+
                             img = document.createElement("img");
                             imgDiv.appendChild(img);
-                            img.src = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "?size=" + ImageGrid.imageSize;
+                            img.src = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "?size=" + ImageGrid.imageSize + extraTimestamp;
                             img.style = "max-width:" + imgBoxPos.width + "px;max-height:" + imgBoxPos.height + "px;";
                             if (img.complete) {
                                 return;
                             } else {
                                 currentLoadingCount++;
-                                img.addEventListener('load', function() {
+                                img.addEventListener('load', function(e) {
                                     loadNextImgs();
                                 });
                                 img.addEventListener('error', function(e) {
@@ -405,7 +424,7 @@ var ImageGrid = {
                                 ImageGrid.scrollHandler();
                             }
                         },
-                        [100,200,300,400,600,900,1000,1400,1800,2200,2600].map(function(s) {
+                        [100,200,300,400,600,800,900,1000,1400,1800,2200,2600].map(function(s) {
                             return m("option", {value: s, selected: ImageGrid.imageSize == s ? "selected" : ""}, s + " px");
                         })
                     )

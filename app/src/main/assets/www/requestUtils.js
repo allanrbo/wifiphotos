@@ -1,7 +1,3 @@
-var xhrConfig = function(xhr) {
-    xhr.setRequestHeader("Content-Type", "application/json");
-};
-
 var handleUnauthorized = function(e) {
     if(e.response != null && e.response.status == "unauthorized") {
         m.route.set('/login');
