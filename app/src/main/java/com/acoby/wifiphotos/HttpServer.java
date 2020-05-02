@@ -330,7 +330,7 @@ public class HttpServer extends NanoHTTPD {
                 String etag = "\"" + this.imageResizer.getCacheKey(imageID, isTrash, size).replace("-","") + "\"";
                 String ifNoneMatch = session.getHeaders().get("if-none-match");
                 if (ifNoneMatch != null && ifNoneMatch.equals(etag)) {
-                    Response r = this.newFixedLengthResponse(Response.Status.NOT_MODIFIED, MIME_HTML, "");
+                    Response r = this.newFixedLengthResponse(Response.Status.NOT_MODIFIED, null, null);
                     r.addHeader("ETag", etag);
                     return r;
                 }
