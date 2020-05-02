@@ -56,7 +56,7 @@ public class HttpServer extends NanoHTTPD {
     boolean loginInProgress = false;
 
     Pattern apiBucketContentsRegex = Pattern.compile("/api/buckets/([0-9-]+|trash)");
-    Pattern apiImageRegex = Pattern.compile("/api/images/(trash/)?([0-9-]+)/(.+)");
+    Pattern apiImageRegex = Pattern.compile("/api/images/(trash/)?([0-9-]+)(/(.+))?");
 
     Response apiNotFoundResponse;
     Response htmlNotFoundResponse;
@@ -303,10 +303,12 @@ public class HttpServer extends NanoHTTPD {
                 return this.apiNotFoundResponse;
             }
 
-            String name = m.group(3);
-            String expectedName = getImageName(imageID, isTrash);
-            if (expectedName != null && !name.equals(expectedName)) {
-                return this.apiNotFoundResponse;
+            String name = m.group(4);
+            if (name != null) {
+                String expectedName = getImageName(imageID, isTrash);
+                if (expectedName != null && !name.equals(expectedName)) {
+                    return this.apiNotFoundResponse;
+                }
             }
 
             /*

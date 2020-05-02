@@ -457,6 +457,12 @@ var ImageGrid = {
                         m("a", { onclick: ImageGrid.deleteSelected }, "Delete permanently (" + ImageGrid.selectedImageIDs.length + " selected)")
                     ]),
                     m(".control", [
+                        m("span.fa.fa-times", { onclick: ImageGrid.deleteAllTrash }
+                        ),
+                        " ",
+                        m("a", { onclick: ImageGrid.deleteAllTrash }, "Delete all trash permanently")
+                    ]),
+                    m(".control", [
                         m("span.fa.fa-arrow-left", { onclick: ImageGrid.returnToPreviouslyViewedCollection }
                         ),
                         " ",
@@ -493,6 +499,29 @@ var ImageGrid = {
         var promises = [];
         for (var i = 0; i < ImageGrid.selectedImageIDs.length; i++) {
             promises.push(Image.delete(ImageGrid.selectedImageIDs[i], isTrash));
+        }
+
+        Promise.all(promises).then(function() {
+            Image.loadList(Bucket.currentId);
+            ImageGrid.selectedImageIDs = [];
+       });
+    },
+
+    deleteAllTrash: function() {
+        // Are we currently viewing the trash directory?
+        var isTrash = Bucket.currentId == "trash";
+        if (!isTrash) {
+            return;
+        }
+
+        var r = confirm("Permanently delete all trash?");
+        if (r != true) {
+            return;
+        }
+
+        var promises = [];
+        for (var i = 0; i < Image.list.length; i++) {
+            promises.push(Image.delete(Image.list[i].imageId, isTrash));
         }
 
         Promise.all(promises).then(function() {
