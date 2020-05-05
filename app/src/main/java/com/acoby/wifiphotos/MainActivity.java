@@ -34,13 +34,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        ensurePermissionsGranted();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+
+        this.ensurePermissionsGranted();
 
         // Display IP address in phone UI.
         WifiManager wifiMgr = (WifiManager) this.getApplicationContext().getSystemService(WIFI_SERVICE);
@@ -81,8 +81,11 @@ public class MainActivity extends AppCompatActivity {
         WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         this.wifiLock1 = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF , "wifiphotos_wifilock_highperf");
         this.wifiLock1.acquire();
-        this.wifiLock2 = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "wifiphotos_wifilock_lowlatency");
-        this.wifiLock2.acquire();
+
+        if (Build.VERSION.SDK_INT >= 29) {
+            this.wifiLock2 = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "wifiphotos_wifilock_lowlatency");
+            this.wifiLock2.acquire();
+        }
 
         try {
             this.imageResizer = new ImageResizer(this);
@@ -146,6 +149,7 @@ public class MainActivity extends AppCompatActivity {
                     this.httpServer.stop();
                 }
                 this.finish();
+                return;
             }
         }
     }
