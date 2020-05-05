@@ -168,6 +168,21 @@ var ImageGrid = {
             pageLength = lastTop + imgBoxSize;
         }
 
+        var fullResUrl = null;
+        if (ImageGrid.selectedImageIDs.length == 1) {
+            var imageId = ImageGrid.selectedImageIDs[0];
+
+            var name = "";
+            for (var i = 0; i < Image.list.length; i++) {
+                if (Image.list[i].imageId == imageId) {
+                    name = Image.list[i].name;
+                }
+            }
+
+            var isTrash = Bucket.currentId == "trash";
+            fullResUrl = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "/" + name + "?size=full";
+        }
+
         return [
             /*
              * Main image grid.
@@ -450,7 +465,7 @@ var ImageGrid = {
                     m("span.fa.fa-arrows-alt", { onclick: ImageGrid.viewFullRes }
                     ),
                     " ",
-                    m("a", { onclick: ImageGrid.viewFullRes }, "View full resolution")
+                    m("a", { href: fullResUrl }, "View full resolution")
                 ]),
                 !isTrash ? [
                     m(".control", [
@@ -465,19 +480,19 @@ var ImageGrid = {
                     m(".control", [
                         m("span.fa.fa-reply", { onclick: ImageGrid.restoreSelectedFromTrash } ),
                         " ",
-                        m("a", { onclick: ImageGrid.restoreSelectedFromTrash }, "Restore from trash")
+                        m("a", { onclick: ImageGrid.restoreSelectedFromTrash }, "Restore")
                     ]),
                     m(".control", [
                         m("span.fa.fa-times", { onclick: ImageGrid.deleteSelected }
                         ),
                         " ",
-                        m("a", { onclick: ImageGrid.deleteSelected }, "Delete permanently (" + ImageGrid.selectedImageIDs.length + " selected)")
+                        m("a", { onclick: ImageGrid.deleteSelected }, "Delete (" + ImageGrid.selectedImageIDs.length + " selected)")
                     ]),
                     m(".control", [
                         m("span.fa.fa-times", { onclick: ImageGrid.deleteAllTrash }
                         ),
                         " ",
-                        m("a", { onclick: ImageGrid.deleteAllTrash }, "Delete all trash permanently")
+                        m("a", { onclick: ImageGrid.deleteAllTrash }, "Delete all")
                     ]),
                     m(".control", [
                         m("span.fa.fa-arrow-left", { onclick: ImageGrid.returnToPreviouslyViewedCollection }
@@ -585,23 +600,5 @@ var ImageGrid = {
         ImageGrid.selectedImageIDs = [];
         Image.list = [];
         Image.loadList(Bucket.currentId);
-    },
-
-    viewFullRes: function() {
-        if (ImageGrid.selectedImageIDs.length != 1) {
-            return;
-        }
-
-        var imageId = ImageGrid.selectedImageIDs[0];
-
-        var name = "";
-        for (var i = 0; i < Image.list.length; i++) {
-            if (Image.list[i].imageId == imageId) {
-                name = Image.list[i].name;
-            }
-        }
-
-        var isTrash = Bucket.currentId == "trash";
-        window.location.href = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "/" + name + "?size=full";
     }
 }
