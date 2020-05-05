@@ -1,7 +1,6 @@
 package com.acoby.wifiphotos;
 
 import android.content.ContentUris;
-import android.content.ContentValues;
 import android.content.res.AssetManager;
 import android.database.Cursor;
 import android.net.Uri;
@@ -21,12 +20,9 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.Reader;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -43,14 +39,11 @@ import java.util.regex.Pattern;
 
 import fi.iki.elonen.NanoHTTPD;
 
-import static android.database.Cursor.FIELD_TYPE_FLOAT;
-import static android.database.Cursor.FIELD_TYPE_INTEGER;
-import static android.database.Cursor.FIELD_TYPE_STRING;
-
 public class HttpServer extends NanoHTTPD {
     AppCompatActivity activity;
     Gson gson;
     ImageResizer imageResizer;
+    Trash trash;
 
     HashSet<String> allowedTokens = new HashSet<>();
     boolean loginInProgress = false;
@@ -63,11 +56,12 @@ public class HttpServer extends NanoHTTPD {
 
     boolean threadPrioritySet = false;
 
-    public HttpServer(AppCompatActivity activity, ImageResizer imageResizer, String hostname) throws IOException {
+    public HttpServer(AppCompatActivity activity, ImageResizer imageResizer, Trash trash, String hostname) throws IOException {
         super(hostname, 8080);
         this.activity = activity;
         this.gson = new Gson();
         this.imageResizer = imageResizer;
+        this.trash = trash;
 
         this.apiNotFoundResponse = this.newJsonMsgResponse(Response.Status.NOT_FOUND, "error", "Not found");
         this.htmlNotFoundResponse = this.newFixedLengthResponse(Response.Status.NOT_FOUND, NanoHTTPD.MIME_HTML, "Not found");
@@ -272,7 +266,7 @@ public class HttpServer extends NanoHTTPD {
         Matcher m = this.apiBucketContentsRegex.matcher(uri);
         if (m.matches()) {
             if (m.group(1).equals("trash")) {
-                List<Image> images = getImageIDsInTrash();
+                List<Image> images = this.trash.getImageIDsInTrash();
                 return this.newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(images));
             }
 
@@ -360,14 +354,14 @@ public class HttpServer extends NanoHTTPD {
             if (session.getMethod() == Method.DELETE) {
                 if (isTrash) {
                     try {
-                        this.deleteImageFromTrash(imageID);
+                        this.trash.deleteImageFromTrash(imageID);
                     } catch (Exception e) {
                         Log.v(MainActivity.TAG, Log.getStackTraceString(e));
                         return this.newJsonMsgResponse(Response.Status.INTERNAL_ERROR, "error", "Error while deleting image");
                     }
                 } else {
                     try {
-                        this.moveImageToTrash(imageID);
+                        this.trash.moveImageToTrash(imageID);
                     } catch (Exception e) {
                         Log.v(MainActivity.TAG, Log.getStackTraceString(e));
                         if (e.getMessage().contains("No space left on device")) {
@@ -401,7 +395,7 @@ public class HttpServer extends NanoHTTPD {
 
                 // Do the actual restore.
                 try {
-                    this.restoreImageFromTrash(imageID);
+                    this.trash.restoreImageFromTrash(imageID);
                     return this.newJsonMsgResponse(Response.Status.OK, "ok", null);
                 } catch (Exception e) {
                     Log.v(MainActivity.TAG, Log.getStackTraceString(e));
@@ -567,202 +561,6 @@ public class HttpServer extends NanoHTTPD {
         return imageIDs;
     }
 
-    private List<Image> getImageIDsInTrash() {
-        File dir = this.activity.getExternalFilesDir("trash");
-        List images = new ArrayList<Image>();
-        for(String f : dir.list()) {
-            if (f.endsWith(".jpeg")) {
-                long id = Long.parseLong(f.replace(".jpeg", ""));
-                long dateTaken = 0;
-                long dateModified = 0;
-                long size = 0;
-                int width = 0;
-                int height = 0;
-                String name = "" + id;
-
-                File metaDataFile = new File(dir + "/" + f + ".json");
-                if (metaDataFile.exists()) {
-                    try {
-                        Reader r = new FileReader(metaDataFile);
-                        Type stringStringMap = new TypeToken<Map<String, String>>(){}.getType();
-                        Map<String,String> vals = this.gson.fromJson(r, stringStringMap);
-                        r.close();
-
-                        name = vals.get(MediaStore.Images.Media.DISPLAY_NAME);
-                        dateTaken =  Long.parseLong(vals.get(MediaStore.Images.Media.DATE_TAKEN)) ;
-                        dateModified = Long.parseLong(vals.get(MediaStore.Images.Media.DATE_MODIFIED));
-                        size = Long.parseLong(vals.get(MediaStore.Images.Media.SIZE));
-                        id = Long.parseLong(vals.get(MediaStore.Images.Media._ID));
-                        width = Integer.parseInt(vals.get(MediaStore.Images.Media.WIDTH));
-                        height = Integer.parseInt(vals.get(MediaStore.Images.Media.HEIGHT));
-                    } catch (Exception e) {
-                        Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-                    }
-                }
-
-                images.add(new Image(id, dateTaken, dateModified, size, name, width, height));
-            }
-        }
-
-        Collections.sort(images, (o1, o2) -> -Long.compare(((Image)o1).dateTaken, ((Image)o2).dateTaken));
-
-        return images;
-    }
-
-    private void moveImageToTrash(long imageID) throws IOException {
-        Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageID);
-
-        File trashDir = this.activity.getExternalFilesDir("trash");
-        File trashFile = new File(trashDir + "/" + imageID + ".jpeg");
-        File trashMetaDataFile = new File(trashFile + ".json");
-        Log.v(MainActivity.TAG, "Moving to trash: " + trashFile);
-
-        // Copy meta data to trash directory.
-        Cursor cur = this.activity.getContentResolver().query(contentUri, null, null, null, null);
-        cur.moveToFirst();
-        Map<String,Object> vals = new HashMap<>();
-        for (String colName : cur.getColumnNames()) {
-            int colIdx = cur.getColumnIndex(colName);
-
-            if (cur.getType(colIdx) == FIELD_TYPE_INTEGER) {
-                vals.put(cur.getColumnName(colIdx), cur.getLong(colIdx));
-            } else if (cur.getType(colIdx) == FIELD_TYPE_FLOAT) {
-                vals.put(cur.getColumnName(colIdx), cur.getFloat(colIdx));
-            } else if (cur.getType(colIdx) == FIELD_TYPE_STRING) {
-                vals.put(cur.getColumnName(colIdx), cur.getString(colIdx));
-            }
-        }
-        String filePath = null;
-        try {
-            filePath = cur.getString(cur.getColumnIndex(MediaStore.Images.Media.DATA));
-        } catch(Exception e) {
-        }
-        cur.close();
-
-        OutputStream out = new FileOutputStream(trashMetaDataFile);
-        out.write(this.gson.toJson(vals).getBytes());
-        out.close();
-
-        // Move actual JPEG to trash directory.
-        // Try first to just move the file. This may stop working at some point, since the MediaStore.Images.Media.DATA is deprecated.
-        boolean moveSuccess = false;
-        try {
-            if (filePath != null) {
-                Log.v(MainActivity.TAG, "Doing file system move from " + filePath + " to " + trashFile);
-                moveSuccess = (new File(filePath)).renameTo(trashFile);
-            }
-        } catch (Exception e) {
-            Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-        }
-
-        // Fall back to copying via streams if the file system move failed.
-        if (!moveSuccess) {
-            try {
-                Log.v(MainActivity.TAG, "Falling back to stream copying image " + imageID + " rather than file system move");
-                InputStream in = this.activity.getContentResolver().openInputStream(contentUri);
-                out = new FileOutputStream(trashFile);
-                HttpServer.copyStream(in, out);
-                out.close();
-                in.close();
-            } catch(Exception e) {
-                trashMetaDataFile.delete();
-                trashFile.delete();
-                throw e;
-            }
-        }
-
-        this.activity.getContentResolver().delete(contentUri, null, null);
-    }
-
-    private void deleteImageFromTrash(long imageID) throws IOException {
-        File dir = this.activity.getExternalFilesDir("trash");
-
-        File file = new File(dir + "/" + imageID + ".jpeg");
-        if (file.exists()) {
-            file.delete();
-        }
-
-        File metaDataFile = new File(dir + "/" + imageID + ".jpeg.json");
-        if (metaDataFile.exists()) {
-            metaDataFile.delete();
-        }
-
-        this.imageResizer.deleteCache(imageID);
-    }
-
-    private void restoreImageFromTrash(long imageID) throws Exception {
-        File trashDir = this.activity.getExternalFilesDir("trash");
-        File trashFile = new File(trashDir + "/" + imageID + ".jpeg");
-        Log.v(MainActivity.TAG, "Restoring from trash: " + trashFile);
-
-        // Read meta data from meta data file in trash directory.
-        Map<String,String> vals = new HashMap<>();
-        File metaDataFile = new File(trashDir + "/" + imageID + ".jpeg.json");
-        if (metaDataFile.exists()) {
-            try {
-                Reader r = new FileReader(metaDataFile);
-                Type stringStringMap = new TypeToken<Map<String, String>>(){}.getType();
-                vals = this.gson.fromJson(r, stringStringMap);
-                r.close();
-            } catch (Exception e) {
-                // The meta data file was broken. Nothing we can do about this.
-            }
-        }
-
-        // Prepare MediaStore meta data KV-pairs.
-        ContentValues values = new ContentValues();
-        for (Map.Entry<String, String> entry : vals.entrySet()) {
-            values.put(entry.getKey(), entry.getValue());
-        }
-
-        // Insert meta data.
-        Uri contentUri = this.activity.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-        if (contentUri == null) {
-            throw new Exception("failed to insert meta data");
-        }
-
-        // Move actual JPEG out of trash directory.
-        // Try first to just move the file. This may stop working at some point, since the MediaStore.Images.Media.DATA is deprecated.
-        boolean moveSuccess = false;
-        try {
-            String filePath = vals.get(MediaStore.Images.Media.DATA);
-            if (filePath != null) {
-                Log.v(MainActivity.TAG, "Doing file system move from " + trashFile + " to " + filePath);
-                moveSuccess = trashFile.renameTo(new File(filePath));
-            }
-        } catch (Exception e) {
-            Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-        }
-
-        // Fall back to copying via streams if the file system move failed.
-        if (!moveSuccess) {
-            try {
-                Log.v(MainActivity.TAG, "Falling back to stream copying image " + imageID + " rather than file system move");
-                OutputStream out = this.activity.getContentResolver().openOutputStream(contentUri);
-                InputStream in = new FileInputStream(trashFile);
-                HttpServer.copyStream(in, out);
-                in.close();
-                out.close();
-            } catch (Exception e) {
-                // We failed to move the actual JPEG from trash to the collection, so we will remove the meta data again.
-                if (trashFile.exists()) {
-                    this.activity.getContentResolver().delete(contentUri, null, null);
-                }
-                throw e;
-            }
-        }
-
-
-
-        // Delete image and meta data file from trash directory now that it has been restored.
-        if (trashFile.exists()) {
-            trashFile.delete();
-        }
-        if (metaDataFile.exists()) {
-            metaDataFile.delete();
-        }
-    }
-
     private String getImageName(long imageID, boolean isTrash) {
         if (isTrash) {
             File dir = this.activity.getExternalFilesDir("trash");
@@ -800,20 +598,5 @@ public class HttpServer extends NanoHTTPD {
             m.put("message", msg);
         }
         return this.newFixedLengthResponse(httpCode, "application/json", this.gson.toJson(m));
-    }
-
-    // https://stackoverflow.com/a/22128215/40645
-    private static long copyStream(InputStream from, OutputStream to) throws IOException {
-        byte[] buf = new byte[0x1000]; // 4K
-        long total = 0;
-        while (true) {
-            int r = from.read(buf);
-            if (r == -1) {
-                break;
-            }
-            to.write(buf, 0, r);
-            total += r;
-        }
-        return total;
     }
 }

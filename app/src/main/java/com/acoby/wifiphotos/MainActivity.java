@@ -86,6 +86,7 @@ public class MainActivity extends AppCompatActivity {
 
         try {
             this.imageResizer = new ImageResizer(this);
+            Trash trash = new Trash(this, this.imageResizer);
 
             if (DebugFeatures.BIND_ANY_INTERFACE) {
                 ipAddress = null; // To bind to any interface and not just the Wi-Fi.
@@ -93,7 +94,7 @@ public class MainActivity extends AppCompatActivity {
 
             if (ip != 0 || DebugFeatures.BIND_ANY_INTERFACE) {
                 Log.v(TAG, "Starting HTTP server");
-                this.httpServer = new HttpServer(this, this.imageResizer, ipAddress);
+                this.httpServer = new HttpServer(this, this.imageResizer, trash, ipAddress);
                 this.httpServer.start();
             }
         } catch(Exception e) {
