@@ -84,13 +84,13 @@ public class HttpServer extends NanoHTTPD {
             Log.v(MainActivity.TAG, "Got " + session.getMethod() + " request with URI " + uri);
 
             if (uri.startsWith("/api/")) {
-                return this.addCorsHeaders(this.serveApi(session));
+                return this.addCommonHeaders(this.serveApi(session));
             }
 
-            return this.addCorsHeaders(this.serveStaticFiles(session));
+            return this.addCommonHeaders(this.serveStaticFiles(session));
         } catch(Exception e) {
             Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-            return this.newJsonMsgResponse( Response.Status.INTERNAL_ERROR, "error", "Internal error: " + e.getClass().getName() + ": " + e.getMessage());
+            return this.addCommonHeaders(this.newJsonMsgResponse( Response.Status.INTERNAL_ERROR, "error", "Internal error: " + e.getClass().getName() + ": " + e.getMessage()));
         }
     }
 
@@ -101,13 +101,14 @@ public class HttpServer extends NanoHTTPD {
         return r;
     }
 
-    private Response addCorsHeaders(Response r) {
+    private Response addCommonHeaders(Response r) {
         if (DebugFeatures.CORS_ALLOW_ALL) {
             r.addHeader("Access-Control-Allow-Origin", "*");
             r.addHeader("Access-Control-Max-Age", "86400");
             r.addHeader("Access-Control-Allow-Methods", "*");
             r.addHeader("Access-Control-Allow-Headers", "*, Authorization");
         }
+
         return r;
     }
 
