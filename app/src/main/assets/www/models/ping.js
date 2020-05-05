@@ -11,6 +11,8 @@ var Ping = {
         })
         .catch(function(e) {
             if (e.code == null || e.code == 0) {
+                Bucket.list = [];
+                Image.list = [];
                 Ping.lostConnection = true;
             }
             throw e;

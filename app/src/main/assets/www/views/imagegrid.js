@@ -13,6 +13,10 @@ var ImageGrid = {
         Image.list = [];
 
         Bucket.loadList().then(function() {
+            if (Bucket.list.length == 0) {
+                return;
+            }
+
             var savedBucketId = localStorage.getItem("bucketId");
             for (var i = 0; i < Bucket.list.length; i++) {
                 if (Bucket.list[i].id == savedBucketId) {
@@ -343,10 +347,14 @@ var ImageGrid = {
                                     loadNextImgs();
                                 });
                                 img.addEventListener('error', function(e) {
-                                    Ping.ping()
-                                    .then(function(){
-                                        loadNextImgs();
-                                    });
+                                    if (!Ping.lostConnection) {
+                                        Ping.ping()
+                                        .then(function(){
+                                            if (!Ping.lostConnection) {
+                                                loadNextImgs();
+                                            }
+                                        });
+                                    }
                                 });
                             }
                         }

@@ -24,6 +24,9 @@ var LoginView = {
     login: function() {
         Login.resetPinAndToken();
         Login.blockingLogin()
+        .catch(function(e) {
+            Ping.ping();
+        })
         .then(function(e) {
             if (!Login.loginDenied) {
                 ImageGrid.shouldScrollToTimestamp = true;
