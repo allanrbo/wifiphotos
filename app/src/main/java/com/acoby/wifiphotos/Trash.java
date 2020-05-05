@@ -33,18 +33,20 @@ import static android.database.Cursor.FIELD_TYPE_STRING;
 
 public class Trash {
     AppCompatActivity activity;
-    ImageResizer imageResizer;
+    Cache cache;
+    Dirs dirs;
     Gson gson;
 
-    public Trash(AppCompatActivity activity, ImageResizer imageResizer){
+    public Trash(AppCompatActivity activity, Cache cache, Dirs dirs) {
         this.activity = activity;
-        this.imageResizer = imageResizer;
+        this.cache = cache;
+        this.dirs = dirs;
 
         this.gson = new Gson();
     }
 
     public List<HttpServer.Image> getImageIDsInTrash() {
-        File dir = this.activity.getExternalFilesDir("trash");
+        File dir = this.dirs.getFilesDir("trash");
         List images = new ArrayList<HttpServer.Image>();
         for(String f : dir.list()) {
             if (f.endsWith(".jpeg")) {
@@ -88,7 +90,7 @@ public class Trash {
     public void moveImageToTrash(long imageID) throws Exception {
         Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageID);
 
-        File trashDir = this.activity.getExternalFilesDir("trash");
+        File trashDir = this.dirs.getFilesDir("trash");
         File trashFile = new File(trashDir + "/" + imageID + ".jpeg");
         File trashMetaDataFile = new File(trashFile + ".json");
         Log.v(MainActivity.TAG, "Moving to trash: " + trashFile);
@@ -159,7 +161,7 @@ public class Trash {
     }
 
     public void deleteImageFromTrash(long imageID) throws IOException {
-        File dir = this.activity.getExternalFilesDir("trash");
+        File dir = this.dirs.getFilesDir("trash");
 
         File file = new File(dir + "/" + imageID + ".jpeg");
         if (file.exists()) {
@@ -171,11 +173,11 @@ public class Trash {
             metaDataFile.delete();
         }
 
-        this.imageResizer.deleteCache(imageID);
+        this.cache.deleteCache(imageID);
     }
 
     public void restoreImageFromTrash(long imageID) throws Exception {
-        File trashDir = this.activity.getExternalFilesDir("trash");
+        File trashDir = this.dirs.getFilesDir("trash");
         File trashFile = new File(trashDir + "/" + imageID + ".jpeg");
         Log.v(MainActivity.TAG, "Restoring from trash: " + trashFile);
 

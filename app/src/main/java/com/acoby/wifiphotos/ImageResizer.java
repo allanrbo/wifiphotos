@@ -4,7 +4,6 @@ import android.content.ContentUris;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.net.Uri;
-import android.os.Environment;
 import android.provider.MediaStore;
 import android.renderscript.Allocation;
 import android.renderscript.RenderScript;
@@ -15,20 +14,15 @@ import android.util.Log;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.jakewharton.disklrucache.DiskLruCache;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static android.os.Environment.isExternalStorageRemovable;
 
 public class ImageResizer {
     RenderScript renderScript;
@@ -37,46 +31,25 @@ public class ImageResizer {
     Semaphore semaphore;
     AtomicInteger concurrentCount = new AtomicInteger(0);
 
-    final static long cacheMaxSize = 200*1024*1024; // 200MiB
+    Cache cache;
+    Dirs dirs;
 
-    private DiskLruCache diskLruCache;
-
-    public ImageResizer(AppCompatActivity activity) throws IOException {
+    public ImageResizer(AppCompatActivity activity, Cache cache, Dirs dirs) throws IOException {
         this.activity = activity;
+        this.cache = cache;
+        this.dirs = dirs;
 
         this.renderScript = RenderScript.create(this.activity);
-
-        if (!DebugFeatures.DISABLE_CACHING) {
-            File cacheDir = this.getDiskCacheDir("wifiphotoscache");
-            Log.v(MainActivity.TAG, "Cache dir: " + cacheDir.toString());
-            try {
-                this.diskLruCache = DiskLruCache.open(cacheDir, 1, 1, ImageResizer.cacheMaxSize);
-            } catch(Exception e) {
-                Log.v(MainActivity.TAG, "Failed to initialize DiskLruCache");
-                Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-                this.diskLruCache = null;
-            }
-        }
 
         int maxConcurrency = Runtime.getRuntime().availableProcessors();
         this.semaphore = new Semaphore(maxConcurrency, true);
     }
 
-    public void close() {
-        try {
-            this.diskLruCache.close();
-        } catch(Exception e) {
-        }
-    }
-
     public InputStream getResizedImageFile(long imageID, boolean isTrash, int size) throws IOException {
         // Try first to get from cache.
-        String cacheKey = this.getCacheKey(imageID, isTrash, size);
-        if (!DebugFeatures.DISABLE_CACHING) {
-            DiskLruCache.Snapshot snapshot = this.diskLruCache.get(cacheKey);
-            if (snapshot != null) {
-                return snapshot.getInputStream(0);
-            }
+        InputStream in = this.cache.tryGetCache(imageID, isTrash, size);
+        if (in != null) {
+            return in;
         }
 
         // Limit how many images can concurrently be resizing, in order to not hit OutOfMemoryError.
@@ -90,7 +63,6 @@ public class ImageResizer {
 
         // Retry-loop for in case we hit OutOfMemoryError or other transient problems while resizing.
         for(int retries = 0; ; retries++) {
-            InputStream in = null;
             try {
                 long before = System.currentTimeMillis();
 
@@ -160,22 +132,7 @@ public class ImageResizer {
         this.concurrentCount.decrementAndGet();
         this.semaphore.release();
 
-        if (this.diskLruCache != null && !DebugFeatures.DISABLE_CACHING) {
-            OutputStream out = null;
-            try {
-                DiskLruCache.Editor editor = this.diskLruCache.edit(cacheKey);
-                out = editor.newOutputStream(0);
-                Channels.newChannel(out).write(resizedImage);
-                out.close();
-                editor.commit();
-            } catch (Exception e) {
-                Log.v(MainActivity.TAG, "Failed to write to DiskLruCache");
-                Log.v(MainActivity.TAG, Log.getStackTraceString(e));
-                if (out != null) {
-                    out.close();
-                }
-            }
-        }
+        this.cache.store(imageID, isTrash, size, resizedImage);
 
         return new ByteBufferBackedInputStream(resizedImage);
     }
@@ -206,7 +163,7 @@ public class ImageResizer {
 
     public InputStream openOrigImage(long imageID, boolean isTrash) throws FileNotFoundException {
         if (isTrash) {
-            File dir = this.activity.getExternalFilesDir("trash");
+            File dir = this.dirs.getFilesDir("trash");
             return new FileInputStream(dir + "/" + imageID + ".jpeg");
         }
 
@@ -231,28 +188,6 @@ public class ImageResizer {
         }
 
         return in;
-    }
-
-    private long getImageFileSize(long imageID, boolean isTrash) {
-        if (isTrash) {
-            File dir = this.activity.getExternalFilesDir("trash");
-            File f = new File(dir + "/" + imageID + ".jpeg");
-            return f.length();
-        }
-
-        // Query the Android MediaStore API.
-        String[] projection = new String[]{MediaStore.Images.Media._ID, MediaStore.Images.Media.SIZE};
-        String selection = MediaStore.Images.Media._ID + " == ?";
-        String[] selectionArgs = {imageID + ""};
-        String sortOrder = MediaStore.Images.Media.DATE_TAKEN + " DESC";
-        Cursor cur = this.activity.getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, sortOrder);
-
-        long size = 0;
-        if (cur.moveToFirst()) {
-            size= cur.getLong(cur.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE));
-        }
-        cur.close();
-        return size;
     }
 
     private ByteBuffer resize(ByteBuffer in, int size) {
@@ -311,45 +246,5 @@ public class ImageResizer {
         resizeIntrinsic.destroy();
 
         return dst;
-    }
-
-    public void deleteCache(long imageId) throws IOException {
-        if (this.diskLruCache == null) {
-            return;
-        }
-
-        for (File f : this.diskLruCache.getDirectory().listFiles()) {
-            String name = f.getName();
-            if (name.startsWith(imageId + "-")) {
-                String key = f.getName().replaceAll("\\.\\d+$", "");
-                DiskLruCache.Snapshot snapshot = this.diskLruCache.get(key);
-                if (snapshot != null) {
-                    DiskLruCache.Editor editor = snapshot.edit();
-                    editor.set(0, "");
-                    editor.commit();
-                }
-            }
-        }
-    }
-
-    public void deleteCacheAll() throws IOException {
-        this.diskLruCache.delete();
-        File cacheDir = this.getDiskCacheDir("wifiphotoscache");
-        this.diskLruCache = DiskLruCache.open(cacheDir, 1,1, cacheMaxSize);
-    }
-
-    public String getCacheKey(long imageID, boolean isTrash, int size) {
-        long origFileSize = this.getImageFileSize(imageID, isTrash);
-        return imageID + "-" + origFileSize + "-" + size;
-    }
-
-    // Creates a unique subdirectory of the designated app cache directory. Tries to use external
-    // but if not mounted, falls back on internal storage.
-    private File getDiskCacheDir(String uniqueName) {
-        // Check if media is mounted or storage is built-in, if so, try and use external cache dir
-        // otherwise use internal cache dir
-        boolean useExternal = Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState()) || !isExternalStorageRemovable();
-        final String cachePath = useExternal ? this.activity.getExternalCacheDir().getPath() : this.activity.getCacheDir().getPath();
-        return new File(cachePath + File.separator + uniqueName);
     }
 }

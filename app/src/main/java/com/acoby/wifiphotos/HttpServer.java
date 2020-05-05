@@ -44,6 +44,8 @@ public class HttpServer extends NanoHTTPD {
     Gson gson;
     ImageResizer imageResizer;
     Trash trash;
+    Cache cache;
+    Dirs dirs;
 
     HashSet<String> allowedTokens = new HashSet<>();
     boolean loginInProgress = false;
@@ -56,12 +58,14 @@ public class HttpServer extends NanoHTTPD {
 
     boolean threadPrioritySet = false;
 
-    public HttpServer(AppCompatActivity activity, ImageResizer imageResizer, Trash trash, String hostname) throws IOException {
+    public HttpServer(AppCompatActivity activity, ImageResizer imageResizer, Trash trash, Cache cache, Dirs dirs, String hostname) throws IOException {
         super(hostname, 8080);
         this.activity = activity;
         this.gson = new Gson();
         this.imageResizer = imageResizer;
         this.trash = trash;
+        this.cache = cache;
+        this.dirs = dirs;
 
         this.apiNotFoundResponse = this.newJsonMsgResponse(Response.Status.NOT_FOUND, "error", "Not found");
         this.htmlNotFoundResponse = this.newFixedLengthResponse(Response.Status.NOT_FOUND, NanoHTTPD.MIME_HTML, "Not found");
@@ -126,7 +130,7 @@ public class HttpServer extends NanoHTTPD {
                     }
 
                     try {
-                        this.imageResizer.deleteCacheAll();
+                        this.cache.deleteCacheAll();
                     } catch(Exception e) {
                         Log.v(MainActivity.TAG, Log.getStackTraceString(e));
                     }
@@ -322,7 +326,7 @@ public class HttpServer extends NanoHTTPD {
                     }
                 }
 
-                String etag = "\"" + this.imageResizer.getCacheKey(imageID, isTrash, size).replace("-","") + "\"";
+                String etag = "\"" + this.cache.getCacheKey(imageID, isTrash, size).replace("-","") + "\"";
                 String ifNoneMatch = session.getHeaders().get("if-none-match");
                 if (ifNoneMatch != null && ifNoneMatch.equals(etag)) {
                     Response r = this.newFixedLengthResponse(Response.Status.NOT_MODIFIED, null, null);
@@ -563,7 +567,7 @@ public class HttpServer extends NanoHTTPD {
 
     private String getImageName(long imageID, boolean isTrash) {
         if (isTrash) {
-            File dir = this.activity.getExternalFilesDir("trash");
+            File dir = this.dirs.getFilesDir("trash");
             File metaDataFile = new File(dir + "/" + imageID + ".jpeg.json");
             if (!metaDataFile.exists()) {
                 return null;

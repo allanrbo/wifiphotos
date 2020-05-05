@@ -24,7 +24,7 @@ public class MainActivity extends AppCompatActivity {
     public static String TAG = "WifiPhotos";
 
     private HttpServer httpServer;
-    private ImageResizer imageResizer;
+    private Cache cache;
 
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock1;
@@ -88,8 +88,10 @@ public class MainActivity extends AppCompatActivity {
         }
 
         try {
-            this.imageResizer = new ImageResizer(this);
-            Trash trash = new Trash(this, this.imageResizer);
+            Dirs dirs = new Dirs(this);
+            this.cache = new Cache(this, dirs);
+            ImageResizer imageResizer = new ImageResizer(this, this.cache, dirs);
+            Trash trash = new Trash(this, this.cache, dirs);
 
             if (DebugFeatures.BIND_ANY_INTERFACE) {
                 ipAddress = null; // To bind to any interface and not just the Wi-Fi.
@@ -97,7 +99,7 @@ public class MainActivity extends AppCompatActivity {
 
             if (ip != 0 || DebugFeatures.BIND_ANY_INTERFACE) {
                 Log.v(TAG, "Starting HTTP server");
-                this.httpServer = new HttpServer(this, this.imageResizer, trash, ipAddress);
+                this.httpServer = new HttpServer(this, imageResizer, trash, this.cache, dirs, ipAddress);
                 this.httpServer.start();
             }
         } catch(Exception e) {
@@ -129,9 +131,9 @@ public class MainActivity extends AppCompatActivity {
             this.httpServer  = null;
         }
 
-        if (this.imageResizer != null) {
-            this.imageResizer.close();
-            this.imageResizer = null;
+        if (this.cache != null) {
+            this.cache.close();
+            this.cache = null;
         }
     }
 
