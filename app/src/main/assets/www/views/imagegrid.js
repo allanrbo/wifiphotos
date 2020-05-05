@@ -44,6 +44,13 @@ var ImageGrid = {
                 ImageGrid.imageSize = 1000;
             }
         }
+
+        ImageGrid.scrolledToTimestamp = sessionStorage.getItem("scrolledToTimestamp");
+        if (ImageGrid.scrolledToTimestamp != null) {
+            ImageGrid.shouldScrollToTimestamp = true;
+        } else {
+            ImageGrid.scrolledToTimestamp = 0;
+        }
     },
 
     view: function(vnode) {
@@ -144,6 +151,7 @@ var ImageGrid = {
         // Save the timestamp of the image in the top right corner, in case we need to scroll to it later.
         if (firstVisibleImageBoxPos != null && ImageGrid.shouldScrollToTimestamp == false) {
             ImageGrid.scrolledToTimestamp = firstVisibleImageBoxPos.image.dateTaken;
+            sessionStorage.setItem("scrolledToTimestamp", ImageGrid.scrolledToTimestamp);
         }
 
         // Only after the image list is loaded we are done with trying to scroll back to the image after the scrolledToTimestamp timestamp.
@@ -394,6 +402,7 @@ var ImageGrid = {
                                 localStorage.setItem("bucketId", Bucket.currentId);
                                 ImageGrid.selectedImageIDs = [];
                                 ImageGrid.scrolledToTimestamp = 0;
+                                sessionStorage.setItem("scrolledToTimestamp", ImageGrid.scrolledToTimestamp);
                                 Image.loadList(Bucket.currentId);
                             },
                         },
@@ -519,15 +528,21 @@ var ImageGrid = {
             return;
         }
 
-        var promises = [];
-        for (var i = 0; i < Image.list.length; i++) {
-            promises.push(Image.delete(Image.list[i].imageId, isTrash));
-        }
+        // Load trash list again just to be 100% sure that we are only deleting trash.
+        Bucket.currentId = "trash";
+        Image.loadList("trash")
+        .then(function() {
+            var promises = [];
+            for (var i = 0; i < Image.list.length; i++) {
+                promises.push(Image.delete(Image.list[i].imageId, isTrash));
+            }
 
-        Promise.all(promises).then(function() {
-            Image.loadList(Bucket.currentId);
-            ImageGrid.selectedImageIDs = [];
-       });
+            Promise.all(promises).then(function() {
+                Bucket.currentId = "trash";
+                Image.loadList("trash");
+                ImageGrid.selectedImageIDs = [];
+           });
+        });
     },
 
     restoreSelectedFromTrash: function() {
@@ -547,6 +562,7 @@ var ImageGrid = {
         ImageGrid.previouslyViewedCollection = Bucket.currentId;
         ImageGrid.previouslyViewedScrolledToTimestamp = ImageGrid.scrolledToTimestamp;
         ImageGrid.scrolledToTimestamp = 0;
+        sessionStorage.setItem("scrolledToTimestamp", ImageGrid.scrolledToTimestamp);
         Image.list = [];
         Bucket.currentId = "trash";
         ImageGrid.selectedImageIDs = [];
@@ -556,6 +572,7 @@ var ImageGrid = {
     returnToPreviouslyViewedCollection: function() {
         Bucket.currentId = ImageGrid.previouslyViewedCollection;
         ImageGrid.scrolledToTimestamp = ImageGrid.previouslyViewedScrolledToTimestamp;
+        sessionStorage.setItem("scrolledToTimestamp", ImageGrid.scrolledToTimestamp);
         ImageGrid.shouldScrollToTimestamp = true;
         ImageGrid.selectedImageIDs = [];
         Image.list = [];
