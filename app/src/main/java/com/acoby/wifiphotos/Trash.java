@@ -85,7 +85,7 @@ public class Trash {
         return images;
     }
 
-    public void moveImageToTrash(long imageID) throws IOException {
+    public void moveImageToTrash(long imageID) throws Exception {
         Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageID);
 
         File trashDir = this.activity.getExternalFilesDir("trash");
@@ -145,6 +145,14 @@ public class Trash {
                 trashFile.delete();
                 throw e;
             }
+        }
+
+        if (!trashFile.exists()) {
+            throw new Exception("failed to create trash file");
+        }
+
+        if (!trashMetaDataFile.exists()) {
+            throw new Exception("failed to create meta data trash file");
         }
 
         this.activity.getContentResolver().delete(contentUri, null, null);
