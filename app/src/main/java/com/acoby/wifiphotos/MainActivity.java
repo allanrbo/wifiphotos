@@ -27,7 +27,8 @@ public class MainActivity extends AppCompatActivity {
     private ImageResizer imageResizer;
 
     private PowerManager.WakeLock wakeLock;
-    private WifiManager.WifiLock wifiLock;
+    private WifiManager.WifiLock wifiLock1;
+    private WifiManager.WifiLock wifiLock2;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,8 +79,10 @@ public class MainActivity extends AppCompatActivity {
 
         // Taking Wi-Fi lock. This is to ensure best HTTP server transfer rates.
         WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-        this.wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF , "wifiphotos.acoby.com::WifiLock");
-        this.wifiLock.acquire();
+        this.wifiLock1 = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF , "wifiphotos_wifilock_highperf");
+        this.wifiLock1.acquire();
+        this.wifiLock2 = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "wifiphotos_wifilock_lowlatency");
+        this.wifiLock2.acquire();
 
         try {
             this.imageResizer = new ImageResizer(this);
@@ -102,20 +105,29 @@ public class MainActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
 
-        if (wakeLock != null) {
-            wakeLock.release();
+        if (this.wakeLock != null) {
+            this.wakeLock.release();
+            this.wakeLock = null;
         }
 
-        if (wifiLock != null) {
-            wifiLock.release();
+        if (this.wifiLock1 != null) {
+            this.wifiLock1.release();
+            this.wifiLock1 = null;
+        }
+
+        if (this.wifiLock2 != null) {
+            this.wifiLock2.release();
+            this.wifiLock2 = null;
         }
 
         if (this.httpServer != null) {
             this.httpServer.stop();
+            this.httpServer  = null;
         }
 
         if (this.imageResizer != null) {
             this.imageResizer.close();
+            this.imageResizer = null;
         }
     }
 
