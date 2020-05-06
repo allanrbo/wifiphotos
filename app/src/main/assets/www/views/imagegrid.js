@@ -654,7 +654,9 @@ var ImageGrid = {
 
             var f = function(newSelection) {
                 return function() {
-                    ImageGrid.selectNewImage(newSelection);
+                    ImageGrid.selectedImageIDs = [newSelection];
+                    ImageGrid.selectedImageIDLatest = newSelection;
+                    m.redraw();
                 }
             }(newSelection);
             ImageGrid.deleteSelected().then(f);
@@ -692,8 +694,22 @@ var ImageGrid = {
 
         // If the keyboard navigation changed the selection, make sure it's fully within the scroll area.
         if (newSelection) {
+            var scrollTop = document.documentElement.scrollTop;
+            var scrollBottom = scrollTop + window.innerHeight;
+
+            ImageGrid.selectedImageIDs = [newSelection];
+            ImageGrid.selectedImageIDLatest = newSelection;
+
+            if (ImageGrid.imgBoxPositions[newSelection].bottom > scrollBottom - 50) {
+                document.documentElement.scrollTop = ImageGrid.imgBoxPositions[newSelection].bottom - window.innerHeight + 50;
+            }
+            if (ImageGrid.imgBoxPositions[newSelection].top < scrollTop + 50) {
+                document.documentElement.scrollTop = ImageGrid.imgBoxPositions[newSelection].top - 50;
+            }
+            document.activeElement.blur();
+            m.redraw();
+
             e.preventDefault();
-            ImageGrid.selectNewImage(newSelection);
         }
     },
 
@@ -733,22 +749,5 @@ var ImageGrid = {
         }
 
         return {north: north, west: west, south: south, east: east};
-    },
-
-    selectNewImage: function(imageId) {
-        var scrollTop = document.documentElement.scrollTop;
-        var scrollBottom = scrollTop + window.innerHeight;
-
-        ImageGrid.selectedImageIDs = [imageId];
-        ImageGrid.selectedImageIDLatest = imageId;
-
-        if (ImageGrid.imgBoxPositions[imageId].bottom > scrollBottom - 50) {
-            document.documentElement.scrollTop = ImageGrid.imgBoxPositions[imageId].bottom - window.innerHeight + 50;
-        }
-        if (ImageGrid.imgBoxPositions[imageId].top < scrollTop + 50) {
-            document.documentElement.scrollTop = ImageGrid.imgBoxPositions[imageId].top - 50;
-        }
-        document.activeElement.blur();
-        m.redraw();
     }
 }
