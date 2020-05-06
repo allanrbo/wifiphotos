@@ -664,7 +664,10 @@ var ImageGrid = {
             ImageGrid.selectedImageIDLatest = 0;
             m.redraw();
         } else if (e.keyCode == 13) { // Enter key
-            window.location.href = ImageGrid.getFullResUrl();
+            var fullResUrl = ImageGrid.getFullResUrl();
+            if (fullResUrl) {
+                window.location.href = fullResUrl;
+            }
         } else if (e.keyCode == 39) { // Arrow right key
             var s = ImageGrid.getSelectedSurrounding();
             if (s.east != 0) {
