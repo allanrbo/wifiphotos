@@ -3,7 +3,6 @@ var Image = {
     listLoaded: false,
 
     loadList: function(bucketId) {
-        Image.listLoaded = false;
         return m.request({
             method: "GET",
             url: apiUrl + "/buckets/" + bucketId,
