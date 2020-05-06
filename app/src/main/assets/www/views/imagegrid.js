@@ -519,6 +519,10 @@ var ImageGrid = {
     },
 
     deleteSelected: function() {
+        if (ImageGrid.selectedImageIDs.length == 0) {
+            return;
+        }
+
         // Are we currently viewing the trash directory?
         var isTrash = Bucket.currentId == "trash";
         if (isTrash) {
@@ -533,9 +537,10 @@ var ImageGrid = {
             promises.push(Image.delete(ImageGrid.selectedImageIDs[i], isTrash));
         }
 
+        ImageGrid.selectedImageIDs = [];
+
         Promise.all(promises).then(function() {
             Image.loadList(Bucket.currentId);
-            ImageGrid.selectedImageIDs = [];
        });
     },
 
