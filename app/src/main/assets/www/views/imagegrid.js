@@ -33,77 +33,12 @@ var ImageGrid = {
             Image.loadList(Bucket.currentId);
         });
 
+        window.removeEventListener('scroll', ImageGrid.scrollHandler);
         window.addEventListener('scroll', ImageGrid.scrollHandler, false);
+        window.removeEventListener('resize', ImageGrid.scrollHandler);
         window.addEventListener('resize', ImageGrid.scrollHandler, false);
-        window.addEventListener('keydown', function(e) {
-            // Default to starting in top left corner if there is no other latest selection, or it is off screen.
-            var found = false;
-            if (ImageGrid.selectedImageIDLatest != 0) {
-                for (var i = 0; i < ImageGrid.imgBoxPositionsToDraw.length; i++) {
-                    if (ImageGrid.imgBoxPositionsToDraw[i].image.imageId == ImageGrid.selectedImageIDLatest) {
-                        found = true;
-                        break;
-                    }
-                }
-            }
-            if (ImageGrid.firstVisibleImageBoxPos != null && (ImageGrid.selectedImageIDLatest == 0 || !found)) {
-                ImageGrid.selectedImageIDLatest = ImageGrid.firstVisibleImageBoxPos.image.imageId;
-            }
-
-            var newSelection = null;
-
-            if (e.keyCode == 46 || (e.keyCode == 8 && e.metaKey === true)) { // Delete key, or cmd-backspace on Mac
-                if (ImageGrid.selectedImageIDs.length == 1) {
-                    var s = ImageGrid.getSelectedSurrounding();
-                    if (s.east != 0) {
-                        newSelection = s.east;
-                    } else if (s.west != 0) {
-                        newSelection = s.west;
-                    }
-                }
-
-                var f = function(newSelection) {
-                    return function() {
-                        ImageGrid.selectNewImage(newSelection);
-                    }
-                }(newSelection);
-                ImageGrid.deleteSelected().then(f);
-                newSelection = null;
-            } else if (e.keyCode == 27) { // Esc key
-                ImageGrid.selectedImageIDs = [];
-                ImageGrid.selectedImageIDLatest = 0;
-                m.redraw();
-            } else if (e.keyCode == 13) { // Enter key
-                window.location.href = ImageGrid.getFullResUrl();
-            } else if (e.keyCode == 39) { // Arrow right key
-                var s = ImageGrid.getSelectedSurrounding();
-                if (s.east != 0) {
-                    newSelection = s.east;
-                }
-            } else if (e.keyCode == 37) { // Arrow left key
-                var s = ImageGrid.getSelectedSurrounding();
-                if (s.west!= 0) {
-                    newSelection = s.west;
-                }
-            } else if (e.keyCode == 38) { // Arrow up key
-                var s = ImageGrid.getSelectedSurrounding();
-                if (s.north != 0) {
-                    newSelection = s.north;
-                }
-            } else if (e.keyCode == 40) { // Arrow down key
-                var s = ImageGrid.getSelectedSurrounding();
-                if (s.south != 0) {
-                    newSelection = s.south;
-                }
-            }
-
-            // If the keyboard navigation changed the selection, make sure it's fully within the scroll area.
-            if (newSelection) {
-                e.preventDefault();
-                ImageGrid.selectNewImage(newSelection);
-            }
-
-        }, false);
+        window.removeEventListener('keydown', ImageGrid.keydownHandler);
+        window.addEventListener('keydown', ImageGrid.keydownHandler, false);
 
         ImageGrid.imageSize = localStorage.getItem("imageSize");
         if (ImageGrid.imageSize == null) {
@@ -688,6 +623,75 @@ var ImageGrid = {
 
         var isTrash = Bucket.currentId == "trash";
         return apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "/" + name + "?size=full";
+    },
+
+    keydownHandler: function(e) {
+        // Default to starting in top left corner if there is no other latest selection, or it is off screen.
+        var found = false;
+        if (ImageGrid.selectedImageIDLatest != 0) {
+            for (var i = 0; i < ImageGrid.imgBoxPositionsToDraw.length; i++) {
+                if (ImageGrid.imgBoxPositionsToDraw[i].image.imageId == ImageGrid.selectedImageIDLatest) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (ImageGrid.firstVisibleImageBoxPos != null && (ImageGrid.selectedImageIDLatest == 0 || !found)) {
+            ImageGrid.selectedImageIDLatest = ImageGrid.firstVisibleImageBoxPos.image.imageId;
+        }
+
+        var newSelection = null;
+
+        if (e.keyCode == 46 || (e.keyCode == 8 && e.metaKey === true)) { // Delete key, or cmd-backspace on Mac
+            if (ImageGrid.selectedImageIDs.length == 1) {
+                var s = ImageGrid.getSelectedSurrounding();
+                if (s.east != 0) {
+                    newSelection = s.east;
+                } else if (s.west != 0) {
+                    newSelection = s.west;
+                }
+            }
+
+            var f = function(newSelection) {
+                return function() {
+                    ImageGrid.selectNewImage(newSelection);
+                }
+            }(newSelection);
+            ImageGrid.deleteSelected().then(f);
+            newSelection = null;
+        } else if (e.keyCode == 27) { // Esc key
+            ImageGrid.selectedImageIDs = [];
+            ImageGrid.selectedImageIDLatest = 0;
+            m.redraw();
+        } else if (e.keyCode == 13) { // Enter key
+            window.location.href = ImageGrid.getFullResUrl();
+        } else if (e.keyCode == 39) { // Arrow right key
+            var s = ImageGrid.getSelectedSurrounding();
+            if (s.east != 0) {
+                newSelection = s.east;
+            }
+        } else if (e.keyCode == 37) { // Arrow left key
+            var s = ImageGrid.getSelectedSurrounding();
+            if (s.west!= 0) {
+                newSelection = s.west;
+            }
+        } else if (e.keyCode == 38) { // Arrow up key
+            var s = ImageGrid.getSelectedSurrounding();
+            if (s.north != 0) {
+                newSelection = s.north;
+            }
+        } else if (e.keyCode == 40) { // Arrow down key
+            var s = ImageGrid.getSelectedSurrounding();
+            if (s.south != 0) {
+                newSelection = s.south;
+            }
+        }
+
+        // If the keyboard navigation changed the selection, make sure it's fully within the scroll area.
+        if (newSelection) {
+            e.preventDefault();
+            ImageGrid.selectNewImage(newSelection);
+        }
     },
 
     // Get the images above, below, left, and right of the currently selected image.
