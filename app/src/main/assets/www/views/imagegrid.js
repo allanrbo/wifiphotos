@@ -654,6 +654,9 @@ var ImageGrid = {
 
             var f = function(newSelection) {
                 return function() {
+                    if (!newSelection) {
+                        return;
+                    }
                     ImageGrid.selectedImageIDs = [newSelection];
                     ImageGrid.selectedImageIDLatest = newSelection;
                     m.redraw();
