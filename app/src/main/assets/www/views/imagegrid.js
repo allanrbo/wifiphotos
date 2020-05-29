@@ -269,6 +269,13 @@ var ImageGrid = {
                             m.redraw();
                         };
 
+                        var f = function(isTrash, imageId, name) {
+                            return function() {
+                                window.location.href = apiUrl + "/images/" + (isTrash ? "trash/" : "") + imageId + "/" + name + "?size=full";
+                            }
+                        }(isTrash, imageId, imgBoxPos.image.name);
+                        imgDiv.ondblclick = f;
+
                         var imglabel = document.createElement("div");
                         imglabel.className = "imglabel";
                         imglabel.innerText = imgBoxPos.image.name;
@@ -422,8 +429,7 @@ var ImageGrid = {
                                 localStorage.setItem("bucketId", Bucket.currentId);
                                 ImageGrid.selectedImageIDs = [];
                                 ImageGrid.scrolledToTimestamp = 0;
-                                sessionStorage.setItem("scrolledToTimestamp", ImageGrid.scrolledToTimestamp);
-                                sessionStorage.setItem("scrolledToTimestampExpire", (new Date()).valueOf() + ImageGrid.scrolledToTimestampExpiryMs);
+                                sessionStorage.setItem("scrolledToTimestamp", 0);
                                 Image.listLoaded = false;
                                 Image.loadList(Bucket.currentId);
                             },
@@ -461,10 +467,14 @@ var ImageGrid = {
                     )
                 ]),
                 m(".control" + (ImageGrid.selectedImageIDs.length != 1 ? ".disabled" : ""), [
-                    m("span.fa.fa-arrows-alt", { onclick: ImageGrid.viewFullRes }
-                    ),
+                    m("a", { href: fullResUrl }, m("span.fa.fa-arrows-alt")),
                     " ",
                     m("a", { href: fullResUrl }, "View full resolution")
+                ]),
+                m(".control" + (ImageGrid.selectedImageIDs.length == 0 ? ".disabled" : ""), [
+                    m("span.fa.fa-square-o", { onclick: ImageGrid.unselectAll}),
+                    " ",
+                    m("a", { onclick: ImageGrid.unselectAll }, "Unselect all")
                 ]),
                 !isTrash ? [
                     m(".control", [
@@ -544,6 +554,11 @@ var ImageGrid = {
         });
     },
 
+    unselectAll: function() {
+        ImageGrid.selectedImageIDLatest = 0;
+        ImageGrid.selectedImageIDs = [];
+    },
+
     deleteAllTrash: function() {
         // Are we currently viewing the trash directory?
         var isTrash = Bucket.currentId == "trash";
@@ -593,8 +608,7 @@ var ImageGrid = {
         ImageGrid.previouslyViewedCollection = Bucket.currentId;
         ImageGrid.previouslyViewedScrolledToTimestamp = ImageGrid.scrolledToTimestamp;
         ImageGrid.scrolledToTimestamp = 0;
-        sessionStorage.setItem("scrolledToTimestamp", ImageGrid.scrolledToTimestamp);
-        sessionStorage.setItem("scrolledToTimestampExpire", (new Date()).valueOf() + ImageGrid.scrolledToTimestampExpiryMs);
+        sessionStorage.setItem("scrolledToTimestamp", 0);
         Image.list = [];
         Bucket.currentId = "trash";
         ImageGrid.selectedImageIDs = [];
@@ -674,8 +688,7 @@ var ImageGrid = {
             ImageGrid.deleteSelected().then(f);
             newSelection = null;
         } else if (e.keyCode == 27) { // Esc key
-            ImageGrid.selectedImageIDs = [];
-            ImageGrid.selectedImageIDLatest = 0;
+            ImageGrid.unselectAll();
             m.redraw();
         } else if (e.keyCode == 13) { // Enter key
             var fullResUrl = ImageGrid.getFullResUrl();
