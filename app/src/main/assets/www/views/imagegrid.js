@@ -5,6 +5,7 @@ var ImageGrid = {
     selectedImageIDLatest: 0,
     shouldScrollToTimestamp: false,
     scrolledToTimestamp: 0,
+    scrolledToTimestampExpiryMs: 1000 * 60 * 60, // How many milliseconds to wait before the scroll-to-timestamp should be forgotten.
     previouslyViewedCollection: 0,
     previouslyViewedScrolledToTimestamp: 0,
     imgBoxPositions: {},
@@ -48,11 +49,15 @@ var ImageGrid = {
             }
         }
 
-        ImageGrid.scrolledToTimestamp = sessionStorage.getItem("scrolledToTimestamp");
-        if (ImageGrid.scrolledToTimestamp != null) {
-            ImageGrid.shouldScrollToTimestamp = true;
-        } else {
-            ImageGrid.scrolledToTimestamp = 0;
+        ImageGrid.shouldScrollToTimestamp = false;
+        ImageGrid.scrolledToTimestamp = 0;
+        var scrolledToTimestampExpire = sessionStorage.getItem("scrolledToTimestampExpire");
+        if (scrolledToTimestampExpire != null && (new Date()).valueOf() < parseInt(scrolledToTimestampExpire)) {
+            var t = sessionStorage.getItem("scrolledToTimestamp");
+            if (t != null) {
+                ImageGrid.shouldScrollToTimestamp = true;
+                ImageGrid.scrolledToTimestamp = t;
+            }
         }
     },
 
@@ -157,6 +162,7 @@ var ImageGrid = {
         if (ImageGrid.firstVisibleImageBoxPos != null && ImageGrid.shouldScrollToTimestamp == false) {
             ImageGrid.scrolledToTimestamp = ImageGrid.firstVisibleImageBoxPos.image.dateTaken;
             sessionStorage.setItem("scrolledToTimestamp", ImageGrid.scrolledToTimestamp);
+            sessionStorage.setItem("scrolledToTimestampExpire", (new Date()).valueOf() + ImageGrid.scrolledToTimestampExpiryMs);
         }
 
         // Only after the image list is loaded we are done with trying to scroll back to the image after the scrolledToTimestamp timestamp.
@@ -417,6 +423,7 @@ var ImageGrid = {
                                 ImageGrid.selectedImageIDs = [];
                                 ImageGrid.scrolledToTimestamp = 0;
                                 sessionStorage.setItem("scrolledToTimestamp", ImageGrid.scrolledToTimestamp);
+                                sessionStorage.setItem("scrolledToTimestampExpire", (new Date()).valueOf() + ImageGrid.scrolledToTimestampExpiryMs);
                                 Image.listLoaded = false;
                                 Image.loadList(Bucket.currentId);
                             },
@@ -587,6 +594,7 @@ var ImageGrid = {
         ImageGrid.previouslyViewedScrolledToTimestamp = ImageGrid.scrolledToTimestamp;
         ImageGrid.scrolledToTimestamp = 0;
         sessionStorage.setItem("scrolledToTimestamp", ImageGrid.scrolledToTimestamp);
+        sessionStorage.setItem("scrolledToTimestampExpire", (new Date()).valueOf() + ImageGrid.scrolledToTimestampExpiryMs);
         Image.list = [];
         Bucket.currentId = "trash";
         ImageGrid.selectedImageIDs = [];
@@ -599,6 +607,7 @@ var ImageGrid = {
         Bucket.currentId = ImageGrid.previouslyViewedCollection;
         ImageGrid.scrolledToTimestamp = ImageGrid.previouslyViewedScrolledToTimestamp;
         sessionStorage.setItem("scrolledToTimestamp", ImageGrid.scrolledToTimestamp);
+        sessionStorage.setItem("scrolledToTimestampExpire", (new Date()).valueOf() + ImageGrid.scrolledToTimestampExpiryMs);
         ImageGrid.shouldScrollToTimestamp = true;
         ImageGrid.selectedImageIDs = [];
         ImageGrid.selectedImageIDLatest = 0;
