@@ -73,6 +73,16 @@ public class Trash {
                         id = Long.parseLong(vals.get(MediaStore.Images.Media._ID));
                         width = Integer.parseInt(vals.get(MediaStore.Images.Media.WIDTH));
                         height = Integer.parseInt(vals.get(MediaStore.Images.Media.HEIGHT));
+
+                        if (vals.containsKey(MediaStore.Images.Media.ORIENTATION)) {
+                            int orientation = Integer.parseInt(vals.get(MediaStore.Images.Media.ORIENTATION));
+                            // If this is portrait orientation, then we will be rotating the image while we resize.
+                            if (orientation == 90 || orientation == 270) {
+                                int tmp = width;
+                                width = height;
+                                height = tmp;
+                            }
+                        }
                     } catch (Exception e) {
                         Log.v(MainActivity.TAG, Log.getStackTraceString(e));
                     }

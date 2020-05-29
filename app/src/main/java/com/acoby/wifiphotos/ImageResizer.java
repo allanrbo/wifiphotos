@@ -3,6 +3,7 @@ package com.acoby.wifiphotos;
 import android.content.ContentUris;
 import android.database.Cursor;
 import android.graphics.Bitmap;
+import android.graphics.Matrix;
 import android.net.Uri;
 import android.provider.MediaStore;
 import android.renderscript.Allocation;
@@ -14,13 +15,20 @@ import android.util.Log;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.Reader;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -34,10 +42,14 @@ public class ImageResizer {
     Cache cache;
     Dirs dirs;
 
+    Gson gson;
+
     public ImageResizer(AppCompatActivity activity, Cache cache, Dirs dirs) throws IOException {
         this.activity = activity;
         this.cache = cache;
         this.dirs = dirs;
+
+        this.gson = new Gson();
 
         this.renderScript = RenderScript.create(this.activity);
 
@@ -71,7 +83,9 @@ public class ImageResizer {
                 Channels.newChannel(in).read(jpegData);
                 in.close();
 
-                resizedImage = this.resize(jpegData, size);
+                int orientation = this.getOrientation(imageID, isTrash);
+
+                resizedImage = this.resize(jpegData, orientation, size);
 
                 Log.v(MainActivity.TAG, "Resized image " + imageID + " in " + (System.currentTimeMillis() - before) + "ms");
                 break;
@@ -190,11 +204,26 @@ public class ImageResizer {
         return in;
     }
 
-    private ByteBuffer resize(ByteBuffer in, int size) {
+    private ByteBuffer resize(ByteBuffer in, int orientation, int size) {
         Bitmap src = LibjpegTurbo.decompress(in);
+
+        if (orientation != 0) {
+            Matrix matrix = new Matrix();
+            matrix.postRotate(orientation);
+            Bitmap rotated = Bitmap.createBitmap(src, 0, 0, src.getWidth(), src.getHeight(), matrix, false);
+            if (!src.isRecycled()) {
+                src.recycle();
+            }
+            src = rotated;
+        }
+
         int[] dstSize = this.calcNewDimensions(src.getWidth(), src.getHeight(), size);
         Bitmap dst = resizeBitmap2(src, dstSize[0]);
         ByteBuffer outBuffer = LibjpegTurbo.compress(dst);
+
+        if (!src.isRecycled()) {
+            src.recycle();
+        }
 
         if (!dst.isRecycled()) {
             dst.recycle();
@@ -246,5 +275,43 @@ public class ImageResizer {
         resizeIntrinsic.destroy();
 
         return dst;
+    }
+
+    private int getOrientation(long imageID, boolean isTrash) {
+        if (isTrash) {
+            File trashDir = this.dirs.getFilesDir("trash");
+
+            // Read meta data from meta data file in trash directory.
+            Map<String,String> vals = new HashMap<>();
+            File metaDataFile = new File(trashDir + "/" + imageID + ".jpeg.json");
+            if (metaDataFile.exists()) {
+                try {
+                    Reader r = new FileReader(metaDataFile);
+                    java.lang.reflect.Type stringStringMap = new TypeToken<Map<String, String>>(){}.getType();
+                    vals = this.gson.fromJson(r, stringStringMap);
+                    r.close();
+                } catch (Exception e) {
+                    // The meta data file was broken. Nothing we can do about this.
+                }
+            }
+
+            if (vals == null || !vals.containsKey(MediaStore.Images.Media.ORIENTATION)) {
+                return 0;
+            }
+
+            return Integer.parseInt(vals.get(MediaStore.Images.Media.ORIENTATION));
+        }
+
+        Uri contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageID);
+        Cursor cur = this.activity.getContentResolver().query(contentUri, null, null, null, null);
+        cur.moveToFirst();
+        int orientation = 0;
+        try {
+            orientation = cur.getInt(cur.getColumnIndex(MediaStore.Images.Media.ORIENTATION));
+        } catch(Exception e) {
+        }
+        cur.close();
+
+        return orientation;
     }
 }

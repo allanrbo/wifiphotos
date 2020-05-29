@@ -535,6 +535,7 @@ public class HttpServer extends NanoHTTPD {
                 MediaStore.Images.Media.DISPLAY_NAME,
                 MediaStore.Images.Media.WIDTH,
                 MediaStore.Images.Media.HEIGHT,
+                MediaStore.Images.Media.ORIENTATION,
         };
         String selection = MediaStore.Images.Media.BUCKET_ID + " == ?";
         String[] selectionArgs = {bucketID + ""};
@@ -548,17 +549,29 @@ public class HttpServer extends NanoHTTPD {
         int displayNameIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME);
         int widthIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH);
         int heightIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT);
+        int orientationIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.ORIENTATION);
 
         List<Image> imageIDs = new ArrayList<Image>();
         while (cur.moveToNext()) {
+            int width = cur.getInt(widthIdx);
+            int height = cur.getInt(heightIdx);
+            int orientation = cur.getInt(orientationIdx);
+
+            // If this is portrait orientation, then we will be rotating the image while we resize.
+            if (orientation == 90 || orientation == 270) {
+                int tmp = width;
+                width = height;
+                height = tmp;
+            }
+
             imageIDs.add(new Image(
                     cur.getLong(idIdx),
                     cur.getLong(dateTakenIdx),
                     cur.getLong(dateModifiedIdx),
                     cur.getLong(sizeIdx),
                     cur.getString(displayNameIdx),
-                    cur.getInt(widthIdx),
-                    cur.getInt(heightIdx)));
+                    width,
+                    height));
         }
         cur.close();
 

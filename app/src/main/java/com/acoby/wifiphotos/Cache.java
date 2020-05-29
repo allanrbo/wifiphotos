@@ -101,7 +101,7 @@ public class Cache {
 
     public String getCacheKey(long imageID, boolean isTrash, int size) {
         long origFileSize = this.getImageFileSize(imageID, isTrash);
-        return imageID + "-" + origFileSize + "-" + size;
+        return imageID + "-" + origFileSize + "-" + size + "-v2";
     }
 
     public void close() {
