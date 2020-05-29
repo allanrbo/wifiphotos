@@ -475,11 +475,9 @@ public class HttpServer extends NanoHTTPD {
         int bucketIdIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID);
         int bucketDisplayNameIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME);
 
-        // This is how the Android's default gallery app gets the camera bucket ID: https://android.googlesource.com/platform/packages/apps/Gallery2/+/refs/heads/master/src/com/android/gallery3d/util/MediaSetUtils.java#33
-        String cameraBucketPath = Environment.getExternalStorageDirectory().toString() + "/DCIM/Camera";
-        long cameraBucketId = cameraBucketPath.toLowerCase().hashCode();
+        long cameraBucketId = this.getCameraBucketId();
 
-        List<Bucket> allBuckets = new ArrayList<Bucket>();
+        List<Bucket> allBuckets = new ArrayList<>();
         Set s = new HashSet<Long>();
         while (cur.moveToNext()) {
             long id = cur.getLong(bucketIdIdx);
@@ -488,6 +486,11 @@ public class HttpServer extends NanoHTTPD {
             }
 
             String displayName = cur.getString(bucketDisplayNameIdx);
+
+            // Buckets that start with IMG_ are portrait mode pics. We will be including them in the "Camera" bucket instead.
+            if (displayName.startsWith("IMG_")) {
+                continue;
+            }
 
             allBuckets.add(new Bucket(displayName, id, id == cameraBucketId));
             s.add(id);
@@ -498,7 +501,7 @@ public class HttpServer extends NanoHTTPD {
 
         // Sensible default in case this is a very vanilla phone without any buckets yet.
         if (allBuckets.size() == 0) {
-            allBuckets.add(new Bucket("Camera", cameraBucketPath.toLowerCase().hashCode(), true));
+            allBuckets.add(new Bucket("Camera", cameraBucketId, true));
         }
 
         return allBuckets;
@@ -540,6 +543,12 @@ public class HttpServer extends NanoHTTPD {
         String selection = MediaStore.Images.Media.BUCKET_ID + " == ?";
         String[] selectionArgs = {bucketID + ""};
         String sortOrder = MediaStore.Images.Media.DATE_TAKEN + " DESC";
+
+        // Include portrait mode photos in camera bucket.
+        if (bucketID == this.getCameraBucketId()) {
+            selection += " OR " + MediaStore.Images.Media.BUCKET_DISPLAY_NAME + " LIKE 'IMG_%'";
+        }
+
         Cursor cur = this.activity.getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, sortOrder);
 
         int idIdx = cur.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
@@ -606,6 +615,12 @@ public class HttpServer extends NanoHTTPD {
         }
         cur.close();
         return name;
+    }
+
+    private long getCameraBucketId() {
+        // This is also how the Android's default gallery app gets the camera bucket ID: https://android.googlesource.com/platform/packages/apps/Gallery2/+/refs/heads/master/src/com/android/gallery3d/util/MediaSetUtils.java#33
+        String cameraBucketPath = Environment.getExternalStorageDirectory().toString() + "/DCIM/Camera";
+        return cameraBucketPath.toLowerCase().hashCode();
     }
 
     private Response newJsonMsgResponse(Response.IStatus httpCode, String status, String msg) {
