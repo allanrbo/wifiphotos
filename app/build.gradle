@@ -7,8 +7,8 @@ android {
         applicationId "com.acoby.wifiphotos"
         minSdkVersion 21
         targetSdkVersion 29
-        versionCode 9
-        versionName "1.8"
+        versionCode 10
+        versionName "1.9"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"

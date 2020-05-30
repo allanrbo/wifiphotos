@@ -1,6 +1,8 @@
 # WifiPhotos
 Manage your phone's photos via a web interface over WiFi.
 
+In the Google Play store: https://play.google.com/store/apps/details?id=com.acoby.wifiphotos
+
 Dev container usage:
 
     mkdir -p `pwd`/../wifiphotoscache/.gradle
