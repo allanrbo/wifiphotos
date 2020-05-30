@@ -11,11 +11,14 @@ import android.os.Bundle;
 import android.os.PowerManager;
 import android.text.format.Formatter;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowManager;
+import android.webkit.WebView;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
@@ -140,6 +143,26 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+    }
+
+    public void viewAbout(View v) {
+        View aboutView = LayoutInflater.from(this).inflate(R.layout.dialog_about, null);
+        AlertDialog a = new AlertDialog.Builder(this, R.style.Theme_AppCompat_Dialog_Alert)
+                .setTitle("About")
+                .setView(aboutView)
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
+    }
+
+    public void viewLicenses(View v) {
+        // Inspired by https://www.bignerdranch.com/blog/open-source-licenses-and-android/
+        WebView view = (WebView) LayoutInflater.from(this).inflate(R.layout.dialog_licenses, null);
+        view.loadUrl("file:///android_asset/open_source_licenses.html");
+        AlertDialog mAlertDialog = new AlertDialog.Builder(this, R.style.Theme_AppCompat_Dialog_Alert)
+                .setTitle("Licenses")
+                .setView(view)
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
     }
 
     @Override

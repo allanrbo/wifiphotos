@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">WifiPhotos</string>
+    <string name="about">About</string>
+    <string name="aboutText">WifiPhotos turns your Android device into a server. It serves a web app directly from your phone. Access it from the browser on your desktop or laptop computer to directly view and manage photos you have shot on your Android device, without ever uploading them to a third party. An alternative to cloud-based services, that keeps your data in your control.</string>
+    <string name="nowAWebServer">This device is now a web server.</string>
+    <string name="toStop">To stop server: close app.</string>
+    <string name="licenses">Licenses</string>
+    <string name="newConnection">New connection</string>
+    <string name="allow">Allow</string>
+    <string name="deny">Deny</string>
 </resources>

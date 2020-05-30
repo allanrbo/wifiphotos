@@ -15,7 +15,7 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="60dp"
         android:gravity="center"
-        android:text="This device is now a web server."
+        android:text="@string/nowAWebServer"
         android:textAppearance="@style/TextAppearance.AppCompat.Large" />
 
     <TextView
@@ -24,9 +24,8 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="60dp"
         android:gravity="center"
-        android:text="To stop server: close app."
+        android:text="@string/toStop"
         android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
-
 
     <TextView
         android:id="@+id/ipAddr"
@@ -41,5 +40,17 @@
         android:layout_width="match_parent"
         android:layout_height="290dp"
         app:srcCompat="@mipmap/smartmockups" />
+
+    <TextView
+        android:id="@+id/viewAbout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:clickable="true"
+        android:gravity="center"
+        android:onClick="viewAbout"
+        android:text="@string/about"
+        android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+        android:textColor="@color/colorPrimaryDark" />
 
 </LinearLayout>
