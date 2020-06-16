@@ -3,7 +3,9 @@ Manage your phone's photos via a web interface over WiFi.
 
 In the Google Play store: https://play.google.com/store/apps/details?id=com.acoby.wifiphotos
 
-Dev container usage:
+Build in Android Studio: Tools -> SDK Manger -> SDK Tools -> Enable NDK and CMake.
+
+Build in Docker:
 
     mkdir -p `pwd`/../wifiphotoscache/.gradle
 
