@@ -1,7 +1,8 @@
-FROM ubuntu:18.04
+FROM ubuntu:20.04
 MAINTAINER Allan Boll <allan@acoby.com>
 
-RUN apt-get update && apt-get install -y \
+RUN export DEBIAN_FRONTEND=noninteractive ; \
+    apt-get update && apt-get install -y -q \
         default-jdk \
         nano git htop unzip wget
 
