@@ -5,6 +5,8 @@ In the Google Play store: https://play.google.com/store/apps/details?id=com.acob
 
 Build in Android Studio: Tools -> SDK Manger -> SDK Tools -> Enable NDK and CMake.
 
+Note: NDK version 23 does not seem to work, but version 21 seems ok.
+
 Build in Docker:
 
     mkdir -p `pwd`/../wifiphotoscache/.gradle
