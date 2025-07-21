@@ -21,6 +21,9 @@ import android.widget.TextView;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -42,11 +45,20 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        // If permissions are pending, request them and wait for callback
+        if (!ensurePermissionsGranted()) {
+            return;
+        }
 
-        this.ensurePermissionsGranted();
+        initAfterPermissions();
+    }
 
+    /**
+     * Continue initialization once storage permissions are granted.
+     */
+    private void initAfterPermissions() {
         // Display IP address in phone UI.
-        WifiManager wifiMgr = (WifiManager) this.getApplicationContext().getSystemService(WIFI_SERVICE);
+        WifiManager wifiMgr = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
         WifiInfo wifiInfo = wifiMgr.getConnectionInfo();
         int ip = wifiInfo.getIpAddress();
         String ipAddress = Formatter.formatIpAddress(ip);
@@ -72,42 +84,40 @@ public class MainActivity extends AppCompatActivity {
             imageView.setVisibility(View.VISIBLE);
         }
 
-        // Keeping screen on because app only runs HTTP server when screen is on. This is for security, to decrease the chance of running the server accidentally.
+        // Keep screen on while active.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // Taking wake lock. This is because the HTTP server will do CPU intensive work (image resizing) for the remote client, even though the app screen is not being used interactively.
+        // Acquire wake lock for background image processing.
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-        this.wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"wifiphotos.acoby.com::Wakelock");
-        this.wakeLock.acquire();
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "wifiphotos.acoby.com::Wakelock");
+        wakeLock.acquire();
 
-        // Taking Wi-Fi lock. This is to ensure best HTTP server transfer rates.
+        // Acquire Wi-Fi locks for best throughput.
         WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-        this.wifiLock1 = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF , "wifiphotos_wifilock_highperf");
-        this.wifiLock1.acquire();
-
+        wifiLock1 = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "wifiphotos_wifilock_highperf");
+        wifiLock1.acquire();
         if (Build.VERSION.SDK_INT >= 29) {
-            this.wifiLock2 = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "wifiphotos_wifilock_lowlatency");
-            this.wifiLock2.acquire();
+            wifiLock2 = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "wifiphotos_wifilock_lowlatency");
+            wifiLock2.acquire();
         }
 
         try {
             Dirs dirs = new Dirs(this);
-            this.cache = new Cache(this, dirs);
-            ImageResizer imageResizer = new ImageResizer(this, this.cache, dirs);
-            Trash trash = new Trash(this, this.cache, dirs);
-
+            cache = new Cache(this, dirs);
+            ImageResizer imageResizer = new ImageResizer(this, cache, dirs);
+            Trash trash = new Trash(this, cache, dirs);
             if (DebugFeatures.BIND_ANY_INTERFACE) {
-                ipAddress = null; // To bind to any interface and not just the Wi-Fi.
+                ipAddress = null; // bind to any interface
             }
-
             if (ip != 0 || DebugFeatures.BIND_ANY_INTERFACE) {
                 Log.v(TAG, "Starting HTTP server");
-                this.httpServer = new HttpServer(this, imageResizer, trash, this.cache, dirs, ipAddress);
-                this.httpServer.start();
+                httpServer = new HttpServer(this, imageResizer, trash, cache, dirs, ipAddress);
+                httpServer.start();
             }
-        } catch(Exception e) {
+        } catch (Exception e) {
             Log.v(TAG, Log.getStackTraceString(e));
         }
+
     }
 
     @Override
@@ -177,21 +187,38 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
         }
+        // Permissions granted: continue setup
+        initAfterPermissions();
     }
 
-    private void ensurePermissionsGranted() {
-        if (Build.VERSION.SDK_INT >= 23) {
-            if (this.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                Log.v(TAG,"Requesting permission READ_EXTERNAL_STORAGE");
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 100);
+    private boolean ensurePermissionsGranted() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            List<String> perms = new ArrayList<>();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Android 13+ requires media permissions instead of broad external storage
+                if (checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    perms.add(Manifest.permission.READ_MEDIA_IMAGES);
+                }
+            } else {
+                if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    perms.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+                }
+                if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    perms.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+                }
             }
-
-            if (this.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                Log.v(TAG,"Requesting permission WRITE_EXTERNAL_STORAGE");
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 200);
+            if (!perms.isEmpty()) {
+                String[] req = perms.toArray(new String[0]);
+                Log.v(TAG, "Requesting permissions " + Arrays.toString(req));
+                ActivityCompat.requestPermissions(this, req, 100);
+                return false;
             }
         } else {
-            Log.v(TAG,"Permissions READ_EXTERNAL_STORAGE and WRITE_EXTERNAL_STORAGE automatically granted because SDK was older than version 23");
+            Log.v(TAG, "Storage permissions automatically granted on SDK <23");
         }
+        return true;
     }
 }
