@@ -15,6 +15,8 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.WebView;
+import android.content.Intent;
+import android.os.Environment;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -192,6 +194,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean ensurePermissionsGranted() {
+        // On Android 11+ require Manage All Files permission for deleting media
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!android.os.Environment.isExternalStorageManager()) {
+                Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                intent.setData(android.net.Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+                return false;
+            }
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             List<String> perms = new ArrayList<>();
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
