@@ -45,7 +45,8 @@ var Image = {
 
     calcNewDimensions: function(srcWidth, srcHeight, dstSize) {
         if (srcWidth == 0 || srcHeight == 0) {
-            return {width: srcWidth, height: srcHeight};
+            // Unknown dimensions (e.g. trashed image metadata missing): render fallback square box
+            return {width: dstSize, height: dstSize};
         }
 
         var dstWidth;
