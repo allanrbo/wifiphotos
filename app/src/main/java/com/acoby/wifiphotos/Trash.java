@@ -66,13 +66,27 @@ public class Trash {
                         Map<String,String> vals = this.gson.fromJson(r, stringStringMap);
                         r.close();
 
-                        name = vals.get(MediaStore.Images.Media.DISPLAY_NAME);
-                        dateTaken =  Long.parseLong(vals.get(MediaStore.Images.Media.DATE_TAKEN)) ;
-                        dateModified = Long.parseLong(vals.get(MediaStore.Images.Media.DATE_MODIFIED));
-                        size = Long.parseLong(vals.get(MediaStore.Images.Media.SIZE));
-                        id = Long.parseLong(vals.get(MediaStore.Images.Media._ID));
-                        width = Integer.parseInt(vals.get(MediaStore.Images.Media.WIDTH));
-                        height = Integer.parseInt(vals.get(MediaStore.Images.Media.HEIGHT));
+                        if (vals.containsKey(MediaStore.Images.Media.DISPLAY_NAME)) {
+                            name = vals.get(MediaStore.Images.Media.DISPLAY_NAME);
+                        }
+                        if (vals.containsKey(MediaStore.Images.Media.DATE_TAKEN)) {
+                            dateTaken = Long.parseLong(vals.get(MediaStore.Images.Media.DATE_TAKEN)) ;
+                        }
+                        if (vals.containsKey(MediaStore.Images.Media.DATE_MODIFIED)) {
+                            dateModified = Long.parseLong(vals.get(MediaStore.Images.Media.DATE_MODIFIED));
+                        }
+                        if (vals.containsKey(MediaStore.Images.Media.SIZE)) {
+                            size = Long.parseLong(vals.get(MediaStore.Images.Media.SIZE));
+                        }
+                        if (vals.containsKey(MediaStore.Images.Media._ID)) {
+                            id = Long.parseLong(vals.get(MediaStore.Images.Media._ID));
+                        }
+                        if (vals.containsKey(MediaStore.Images.Media.WIDTH)) {
+                            width = Integer.parseInt(vals.get(MediaStore.Images.Media.WIDTH));
+                        }
+                        if (vals.containsKey(MediaStore.Images.Media.HEIGHT)) {
+                            height = Integer.parseInt(vals.get(MediaStore.Images.Media.HEIGHT));
+                        }
 
                         if (vals.containsKey(MediaStore.Images.Media.ORIENTATION)) {
                             int orientation = Integer.parseInt(vals.get(MediaStore.Images.Media.ORIENTATION));
@@ -84,7 +98,7 @@ public class Trash {
                             }
                         }
                     } catch (Exception e) {
-                        Log.v(MainActivity.TAG, Log.getStackTraceString(e));
+                        Log.w(MainActivity.TAG, "Exception in getImageIDsInTrash while reading metaDataFile: " + Log.getStackTraceString(e));
                     }
                 }
 
@@ -111,6 +125,8 @@ public class Trash {
         Map<String,Object> vals = new HashMap<>();
         for (String colName : cur.getColumnNames()) {
             int colIdx = cur.getColumnIndex(colName);
+
+            Log.v(MainActivity.TAG, "contentResolver column: " + colName + ", type: " + cur.getType(colIdx));
 
             if (cur.getType(colIdx) == FIELD_TYPE_INTEGER) {
                 vals.put(cur.getColumnName(colIdx), cur.getLong(colIdx));
@@ -201,7 +217,8 @@ public class Trash {
                 vals = this.gson.fromJson(r, stringStringMap);
                 r.close();
             } catch (Exception e) {
-                // The meta data file was broken. Nothing we can do about this.
+                // The meta data file was broken. Nothing we can do about this other than log.
+                Log.w(MainActivity.TAG, "Exception in restoreImageFromTrash while reading metaDataFile: " + Log.getStackTraceString(e));
             }
         }
 

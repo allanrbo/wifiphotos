@@ -542,7 +542,9 @@ public class HttpServer extends NanoHTTPD {
         };
         String selection = MediaStore.Images.Media.BUCKET_ID + " == ?";
         String[] selectionArgs = {bucketID + ""};
-        String sortOrder = MediaStore.Images.Media.DATE_TAKEN + " DESC";
+        String sortOrder = MediaStore.Images.Media.DATE_TAKEN + " DESC, "
+                + MediaStore.Images.Media.DATE_MODIFIED + " DESC, "
+                + MediaStore.Images.Media._ID + " DESC";
 
         // Include portrait mode photos in camera bucket.
         if (bucketID == this.getCameraBucketId()) {
