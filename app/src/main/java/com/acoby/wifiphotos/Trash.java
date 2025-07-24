@@ -126,8 +126,6 @@ public class Trash {
         for (String colName : cur.getColumnNames()) {
             int colIdx = cur.getColumnIndex(colName);
 
-            Log.v(MainActivity.TAG, "contentResolver column: " + colName + ", type: " + cur.getType(colIdx));
-
             if (cur.getType(colIdx) == FIELD_TYPE_INTEGER) {
                 vals.put(cur.getColumnName(colIdx), cur.getLong(colIdx));
             } else if (cur.getType(colIdx) == FIELD_TYPE_FLOAT) {
